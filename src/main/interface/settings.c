@@ -431,6 +431,10 @@ const clivalue_t valueTable[] = {
 #ifdef USE_GYRO_OVERFLOW_CHECK
     { "gyro_overflow_detect",       VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_GYRO_OVERFLOW_CHECK }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, checkOverflow) },
 #endif
+#ifdef USE_GYRO_YAW_SPIN_CHECK
+    { "gyro_yaw_spin_threshold",    VAR_UINT16  | MASTER_VALUE, .config.minmax = { 0,  1950 }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, gyro_yaw_spin_threshold) },
+#endif
+
 #if defined(GYRO_USES_SPI)
 #ifdef USE_32K_CAPABLE_GYRO
     { "gyro_use_32khz",             VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, gyro_use_32khz) },

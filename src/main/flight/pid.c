@@ -625,6 +625,13 @@ void pidController(const pidProfile_t *pidProfile, const rollAndPitchTrims_t *an
             detectAndSetCrashRecovery(pidProfile->crash_recovery, axis, currentTimeUs, delta, errorRate);
 
             pidData[axis].D = pidCoefficient[axis].Kd * delta * tpaFactor;
+            
+            if (gyroYawSpinDetected() )  {
+                // zero PIDs on pitch and roll leaving yaw P to correct spin 
+                pidData[axis].P = 0;
+                pidData[axis].I = 0;
+                pidData[axis].D = 0;
+            }
         }
     }
 
@@ -633,6 +640,10 @@ void pidController(const pidProfile_t *pidProfile, const rollAndPitchTrims_t *an
     pidData[FD_PITCH].Sum = pidData[FD_PITCH].P + pidData[FD_PITCH].I + pidData[FD_PITCH].D;
 
     // YAW has no D
+    if (gyroYawSpinDetected()) {
+    // yaw P alone to correct spin 
+        pidData[FD_YAW].I = 0;
+    }
     pidData[FD_YAW].Sum = pidData[FD_YAW].P + pidData[FD_YAW].I;
 }
 

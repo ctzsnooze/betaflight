@@ -57,6 +57,8 @@
 
 #include "sensors/battery.h"
 
+#include "sensors/gyro.h"
+
 PG_REGISTER_WITH_RESET_TEMPLATE(mixerConfig_t, mixerConfig, PG_MIXER_CONFIG, 0);
 
 #ifndef TARGET_DEFAULT_MIXER
@@ -727,6 +729,10 @@ float applyThrottleLimit(float throttle)
             case THROTTLE_LIMIT_TYPE_CLIP:
                 return MIN(throttle, throttleLimitFactor);
         }
+    }
+    
+    if (gyroYawSpinDetected()) {
+        throttle = 0.0f;
     }
 
     return throttle;
