@@ -966,7 +966,7 @@ static void checkForYawSpin(gyroSensor_t *gyroSensor, timeUs_t currentTimeUs)
     } else {
 #ifndef SIMULATOR_BUILD
         // check for overflow in the axes set in overflowAxisMask
-        const float gyroYawSpinTriggerRate = gyroConfig()->gyro_yaw_spin_threshold * 16.0f;
+        const float gyroYawSpinTriggerRate = gyroConfig()->gyro_yaw_spin_threshold * 16.4f;
          if (abs(gyro.gyroADCf[Z]) > gyroYawSpinTriggerRate) {
             gyroSensor->yawSpinDetected = true;
             gyroSensor->yawSpinTimeUs = currentTimeUs;
