@@ -937,6 +937,7 @@ static void checkForOverflow(gyroSensor_t *gyroSensor, timeUs_t currentTimeUs)
         if (overflowCheck & overflowAxisMask) {
             gyroSensor->overflowDetected = true;
             gyroSensor->overflowTimeUs = currentTimeUs;
+            gyroSensor->yawSpinDetected = false;
         }
 #endif // SIMULATOR_BUILD
     }
