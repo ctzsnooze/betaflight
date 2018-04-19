@@ -731,7 +731,7 @@ float applyThrottleLimit(float throttle)
         }
     }
     
-    if (gyroYawSpinDetected()) {
+    if (yawSpinNow()) {
         throttle = 0.0f;
     }
 
