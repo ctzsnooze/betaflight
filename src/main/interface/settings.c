@@ -432,7 +432,7 @@ const clivalue_t valueTable[] = {
 #endif
 #ifdef USE_YAW_SPIN_CHECK
     { "yaw_spin_protection",        VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, yaw_spin_protection) },
-    { "yaw_spin_threshold",         VAR_UINT16 | MASTER_VALUE, .config.minmax = { 0,  1950 }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, yaw_spin_threshold) },
+    { "yaw_spin_threshold",         VAR_UINT16 | MASTER_VALUE, .config.minmax = { 500,  1950 }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, yaw_spin_threshold) },
 #endif
 
 #if defined(GYRO_USES_SPI)
