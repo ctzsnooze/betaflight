@@ -632,7 +632,7 @@ void pidController(const pidProfile_t *pidProfile, const rollAndPitchTrims_t *an
 
             pidData[axis].D = pidCoefficient[axis].Kd * delta * tpaFactor;
             
-            if (gyroYawSpinDetected() )  {
+            if (yawSpinNow())  {
                 // zero PIDs on pitch and roll leaving yaw P to correct spin 
                 pidData[axis].P = 0;
                 pidData[axis].I = 0;
@@ -646,7 +646,7 @@ void pidController(const pidProfile_t *pidProfile, const rollAndPitchTrims_t *an
     pidData[FD_PITCH].Sum = pidData[FD_PITCH].P + pidData[FD_PITCH].I + pidData[FD_PITCH].D;
 
     // YAW has no D
-    if (gyroYawSpinDetected()) {
+    if (yawSpinNow()) {
     // yaw P alone to correct spin 
         pidData[FD_YAW].I = 0;
     }
