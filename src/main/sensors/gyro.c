@@ -201,7 +201,7 @@ PG_RESET_TEMPLATE(gyroConfig_t, gyroConfig,
     .gyro_offset_yaw = 0,
     .gyro_lma_depth = 0,
     .gyro_lma_weight = 100,
-    .yaw_spin_recovery = true,
+    .yaw_spin_recovery = false,
     .yaw_spin_threshold = 1000,
 );
 
