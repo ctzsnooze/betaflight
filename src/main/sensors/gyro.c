@@ -201,7 +201,7 @@ PG_RESET_TEMPLATE(gyroConfig_t, gyroConfig,
     .gyro_offset_yaw = 0,
     .gyro_lma_depth = 0,
     .gyro_lma_weight = 100,
-    .yaw_spin_protection = true,
+    .yaw_spin_recovery = true,
     .yaw_spin_threshold = 1000,
 );
 
@@ -1021,7 +1021,7 @@ static FAST_CODE void gyroUpdateSensor(gyroSensor_t *gyroSensor, timeUs_t curren
         checkForOverflow(gyroSensor, currentTimeUs);
     }
     
-    if (gyroConfig()->yaw_spin_protection) {
+    if (gyroConfig()->yaw_spin_recovery) {
         checkForYawSpin(gyroSensor, currentTimeUs);
     }
       
