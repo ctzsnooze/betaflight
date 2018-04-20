@@ -119,3 +119,12 @@
 #if defined(USE_GYRO_SPI_MPU6500) || defined(USE_GYRO_SPI_MPU9250) || defined(USE_GYRO_SPI_ICM20689)
 #define USE_32K_CAPABLE_GYRO
 #endif
+
+#if defined(USE_FLASH_W25M512)
+#define USE_FLASH_W25M
+#define USE_FLASH_M25P16
+#endif
+
+#if defined(USE_FLASH_M25P16)
+#define USE_FLASH
+#endif

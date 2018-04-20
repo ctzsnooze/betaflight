@@ -36,10 +36,12 @@
 #include "pg/pg_ids.h"
 
 #include "drivers/light_led.h"
+#include "drivers/serial_usb_vcp.h"
 #include "drivers/sound_beeper.h"
 #include "drivers/system.h"
 #include "drivers/time.h"
 #include "drivers/transponder_ir.h"
+#include "drivers/usb_io.h"
 
 #include "sensors/acceleration.h"
 #include "sensors/barometer.h"
@@ -844,10 +846,12 @@ static void subTaskPidController(timeUs_t currentTimeUs)
 #endif
 }
 
-static void subTaskMainSubprocesses(timeUs_t currentTimeUs)
+static NOINLINE void subTaskMainSubprocesses(timeUs_t currentTimeUs)
 {
     uint32_t startTime = 0;
-    if (debugMode == DEBUG_PIDLOOP) {startTime = micros();}
+    if (debugMode == DEBUG_PIDLOOP) {
+        startTime = micros();
+    }
 
     // Read out gyro temperature if used for telemmetry
     if (feature(FEATURE_TELEMETRY)) {
@@ -904,6 +908,11 @@ static void subTaskMainSubprocesses(timeUs_t currentTimeUs)
     afatfs_poll();
 #endif
 
+#if defined(USE_VCP)
+    DEBUG_SET(DEBUG_USB, 0, usbCableIsInserted());
+    DEBUG_SET(DEBUG_USB, 1, usbVcpIsConnected());
+#endif
+
 #ifdef USE_BLACKBOX
     if (!cliMode && blackboxConfig()->device) {
         blackboxUpdate(currentTimeUs);
@@ -947,7 +956,7 @@ static void subTaskMotorUpdate(timeUs_t currentTimeUs)
 }
 
 // Function for loop trigger
-void taskMainPidLoop(timeUs_t currentTimeUs)
+FAST_CODE void taskMainPidLoop(timeUs_t currentTimeUs)
 {
     static uint32_t pidUpdateCounter = 0;
 
