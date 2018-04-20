@@ -731,10 +731,6 @@ float applyThrottleLimit(float throttle)
         }
     }
     
-    if (yawSpinNow()) {
-        throttle = 0.0f;
-    }
-
     return throttle;
 }
 
@@ -765,6 +761,12 @@ NOINLINE void mixTable(timeUs_t currentTimeUs, uint8_t vbatPidCompensation)
     // Apply the throttle_limit_percent to scale or limit the throttle based on throttle_limit_type
     if (currentControlRateProfile->throttle_limit_type != THROTTLE_LIMIT_TYPE_OFF) {
         throttle = applyThrottleLimit(throttle);
+    }
+    
+    // Handle yaw spin recovery - throttle is set to zero to prevent flyaway
+    // and to give the mixer full authority to stop the spin
+        if (yawSpinNow()) {
+        throttle = 0.0f;
     }
 
     // Find roll/pitch/yaw desired output

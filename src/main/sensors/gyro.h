@@ -99,7 +99,7 @@ typedef struct gyroConfig_s {
     gyroOverflowCheck_e checkOverflow;
     int16_t  gyro_offset_yaw;
 
-    bool     yaw_spin_protection;
+    bool     yaw_spin_recovery;
     int16_t  yaw_spin_threshold;
 
 } gyroConfig_t;
