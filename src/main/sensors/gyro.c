@@ -136,8 +136,10 @@ typedef struct gyroSensor_s {
 
     timeUs_t overflowTimeUs;
     bool overflowDetected;
+#ifdef USE_YAW_SPIN_RECOVERY
     timeUs_t yawSpinTimeUs;
     bool yawSpinDetected;
+#endif // USE_YAW_SPIN_RECOVERY
 
 } gyroSensor_t;
 
@@ -938,7 +940,9 @@ static void checkForOverflow(gyroSensor_t *gyroSensor, timeUs_t currentTimeUs)
         if (overflowCheck & overflowAxisMask) {
             gyroSensor->overflowDetected = true;
             gyroSensor->overflowTimeUs = currentTimeUs;
+#ifdef USE_YAW_SPIN_RECOVERY
             gyroSensor->yawSpinDetected = false;
+#endif // USE_YAW_SPIN_RECOVERY
         }
 #endif // SIMULATOR_BUILD
     }
@@ -950,10 +954,16 @@ static void checkForOverflow(gyroSensor_t *gyroSensor, timeUs_t currentTimeUs)
 
 static void checkForYawSpin(gyroSensor_t *gyroSensor, timeUs_t currentTimeUs)
 {
-#ifdef USE_YAW_SPIN_CHECK
+#ifdef USE_YAW_SPIN_RECOVERY
     // if not in overflow mode, handle yaw spins above threshold
-    if (gyroSensor->yawSpinDetected && !gyroSensor->overflowDetected) {
-        const float yawSpinResetRate = gyroConfig()->yaw_spin_threshold * 0.9f;
+#ifdef USE_GYRO_OVERFLOW_CHECK
+    if (gyroSensor->overflowDetected) {
+        gyroSensor->yawSpinDetected = false;
+        return;
+    }
+#endif // USE_GYRO_OVERFLOW_CHECK
+    if (gyroSensor->yawSpinDetected) {
+        const float yawSpinResetRate = gyroConfig()->yaw_spin_threshold - 100.0f;
         
         if (abs(gyro.gyroADCf[Z]) < yawSpinResetRate) {
             // testing whether 20ms of consecutive OK gyro yaw values is enough
@@ -961,12 +971,12 @@ static void checkForYawSpin(gyroSensor_t *gyroSensor, timeUs_t currentTimeUs)
                 gyroSensor->yawSpinDetected = false;
             }
         } else {
-            // reset the overflow time
+            // reset the yaw spin time
             gyroSensor->yawSpinTimeUs = currentTimeUs;
         }
     } else {
 #ifndef SIMULATOR_BUILD
-        // check for overflow on yaw axis only
+        // check for spin on yaw axis only
         const float yawSpinTriggerRate = gyroConfig()->yaw_spin_threshold;
          if (abs(gyro.gyroADCf[Z]) > yawSpinTriggerRate) {
             gyroSensor->yawSpinDetected = true;
@@ -977,7 +987,7 @@ static void checkForYawSpin(gyroSensor_t *gyroSensor, timeUs_t currentTimeUs)
 #else
     UNUSED(gyroSensor);
     UNUSED(currentTimeUs);
-#endif // USE_YAW_SPIN_CHECK
+#endif // USE_YAW_SPIN_RECOVERY
 }
 
 static FAST_CODE NOINLINE void gyroUpdateSensor(gyroSensor_t *gyroSensor, timeUs_t currentTimeUs)
@@ -1201,10 +1211,12 @@ bool gyroOverflowDetected(void)
     return gyroSensor1.overflowDetected;
 }
 
-bool yawSpinNow(void)
+#ifdef USE_YAW_SPIN_RECOVERY
+bool gyroYawSpinDetected(void)
 {
     return gyroSensor1.yawSpinDetected;
 }
+#endif // USE_YAW_SPIN_RECOVERY
 
 uint16_t gyroAbsRateDps(int axis)
 {

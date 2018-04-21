@@ -123,6 +123,6 @@ void gyroReadTemperature(void);
 int16_t gyroGetTemperature(void);
 int16_t gyroRateDps(int axis);
 bool gyroOverflowDetected(void);
-bool yawSpinNow(void);
+bool gyroYawSpinDetected(void);
 uint16_t gyroAbsRateDps(int axis);
 uint8_t gyroReadRegister(uint8_t reg);

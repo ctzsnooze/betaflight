@@ -765,9 +765,11 @@ NOINLINE void mixTable(timeUs_t currentTimeUs, uint8_t vbatPidCompensation)
     
     // Handle yaw spin recovery - throttle is set to zero to prevent flyaway
     // and to give the mixer full authority to stop the spin
-        if (yawSpinNow()) {
+#ifdef USE_YAW_SPIN_RECOVERY
+    if (gyroYawSpinDetected()) {
         throttle = 0.0f;
     }
+#endif // USE_YAW_SPIN_RECOVERY
 
     // Find roll/pitch/yaw desired output
     float motorMix[MAX_SUPPORTED_MOTORS];
