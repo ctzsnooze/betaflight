@@ -60,6 +60,8 @@
 #include "sensors/battery.h"
 #include "sensors/gyro.h"
 
+#include "sensors/gyro.h"
+
 PG_REGISTER_WITH_RESET_TEMPLATE(mixerConfig_t, mixerConfig, PG_MIXER_CONFIG, 0);
 
 #ifndef TARGET_DEFAULT_MIXER
