@@ -541,7 +541,9 @@ void pidController(const pidProfile_t *pidProfile, const rollAndPitchTrims_t *an
     const float tpaFactor = getThrottlePIDAttenuation();
     const float motorMixRange = getMotorMixRange();
 
+#ifdef USE_YAW_SPIN_RECOVERY
     const bool yawSpinActive = gyroYawSpinDetected();
+#endif
 
     // Dynamic i component,
     // gradually scale back integration when above windup point
