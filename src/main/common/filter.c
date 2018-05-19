@@ -426,3 +426,24 @@ FAST_CODE float lmaSmoothingUpdate(laggedMovingAverage_t *filter, float input)
 
     return input + (((filter->movingSum  / filter->windowSize) - input) * filter->weight);
 }
+
+void smaSmoothingInit(simpleMovingAverage_t *filter, uint8_t windowSize)
+{
+    filter->movingWindowIndex = 0;
+    filter->windowSize = windowSize;
+}
+
+FAST_CODE float smaSmoothingUpdate(simpleMovingAverage_t *filter, float input)
+{
+
+    filter->movingSum -= filter->buf[filter->movingWindowIndex];
+    filter->buf[filter->movingWindowIndex] = input;
+    filter->movingSum += input;
+
+    if (++filter->movingWindowIndex == filter->windowSize) {
+        filter->movingWindowIndex = 0;
+    }
+
+    return filter->movingSum / filter->windowSize;
+}
+

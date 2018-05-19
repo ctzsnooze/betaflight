@@ -1289,6 +1289,13 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_LINE("acc_limit", "%d",                       currentPidProfile->rateAccelLimit);
         BLACKBOX_PRINT_HEADER_LINE("pidsum_limit", "%d",                    currentPidProfile->pidSumLimit);
         BLACKBOX_PRINT_HEADER_LINE("pidsum_limit_yaw", "%d",                currentPidProfile->pidSumLimitYaw);
+#ifdef USE_SETPOINT_WEIGHT_FILTER
+        BLACKBOX_PRINT_HEADER_LINE("setpoint_weight_filter", "%d",          currentPidProfile->setpoint_weight_filter);
+        BLACKBOX_PRINT_HEADER_LINE("setpoint_weight_filter_pt1_cutoff", "%d",   currentPidProfile->setpoint_weight_filter_cutoff);
+        BLACKBOX_PRINT_HEADER_LINE("setpoint_weight_filter_sma_samples", "%d",  currentPidProfile->setpoint_weight_filter_sma_samples);
+        BLACKBOX_PRINT_HEADER_LINE("setpoint_weight_filter_lma_samples", "%d",  currentPidProfile->setpoint_weight_filter_lma_samples);
+        BLACKBOX_PRINT_HEADER_LINE("setpoint_weight_filter_lma_weight", "%d",  currentPidProfile->setpoint_weight_filter_lma_weight);
+#endif // USE_SETPOINT_WEIGHT_FILTER
         // End of Betaflight controller parameters
 
         BLACKBOX_PRINT_HEADER_LINE("deadband", "%d",                        rcControlsConfig()->deadband);

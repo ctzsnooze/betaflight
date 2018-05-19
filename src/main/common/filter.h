@@ -29,6 +29,7 @@
 #endif
 
 #define MAX_LMA_WINDOW_SIZE 12
+#define MAX_SMA_WINDOW_SIZE 64
 
 struct filter_s;
 typedef struct filter_s filter_t;
@@ -79,6 +80,13 @@ typedef struct laggedMovingAverage_s {
     float buf[MAX_LMA_WINDOW_SIZE];
 } laggedMovingAverage_t;
 
+typedef struct simpleMovingAverage_s {
+    uint16_t movingWindowIndex;
+    uint16_t windowSize;
+    float movingSum;
+    float buf[MAX_SMA_WINDOW_SIZE];
+} simpleMovingAverage_t;
+
 typedef enum {
     FILTER_PT1 = 0,
     FILTER_BIQUAD,
@@ -128,6 +136,9 @@ float fastKalmanUpdate(fastKalman_t *filter, float input);
 
 void lmaSmoothingInit(laggedMovingAverage_t *filter, uint8_t windowSize, float weight);
 float lmaSmoothingUpdate(laggedMovingAverage_t *filter, float input);
+
+void smaSmoothingInit(simpleMovingAverage_t *filter, uint8_t windowSize);
+float smaSmoothingUpdate(simpleMovingAverage_t *filter, float input);
 
 float pt1FilterGain(uint16_t f_cut, float dT);
 void pt1FilterInit(pt1Filter_t *filter, float k);

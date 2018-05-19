@@ -70,6 +70,13 @@ typedef enum {
     PID_CRASH_RECOVERY_BEEP
 } pidCrashRecovery_e;
 
+typedef enum {
+    SETPOINT_WEIGHT_FILTER_OFF = 0,
+    SETPOINT_WEIGHT_FILTER_PT1,
+    SETPOINT_WEIGHT_FILTER_SMA,
+    SETPOINT_WEIGHT_FILTER_LMA
+} setpointWeightFilter_e;
+
 typedef struct pid8_s {
     uint8_t P;
     uint8_t I;
@@ -117,6 +124,9 @@ typedef struct pidProfile_s {
     uint8_t  iterm_rotation;                    // rotates iterm to translate world errors to local coordinate system
     uint8_t setpoint_weight_filter;
     uint8_t setpoint_weight_filter_cutoff;
+    uint8_t setpoint_weight_filter_sma_samples;
+    uint8_t setpoint_weight_filter_lma_samples;
+    uint16_t setpoint_weight_filter_lma_weight;
 } pidProfile_t;
 
 #ifndef USE_OSD_SLAVE

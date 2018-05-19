@@ -334,6 +334,13 @@ static const char * const lookupTableVideoSystem[] = {
 };
 #endif // USE_MAX7456
 
+#ifdef USE_SETPOINT_WEIGHT_FILTER
+static const char * const lookupTableSetpointFilter[] = {
+    "OFF", "PT1", "SMA", "LMA"
+};
+#endif // USE_SETPOINT_WEIGHT_FILTER
+
+
 #define LOOKUP_TABLE_ENTRY(name) { name, ARRAYLEN(name) }
 
 const lookupTableEntry_t lookupTables[] = {
@@ -405,6 +412,9 @@ const lookupTableEntry_t lookupTables[] = {
 #ifdef USE_MAX7456
     LOOKUP_TABLE_ENTRY(lookupTableVideoSystem),
 #endif // USE_MAX7456
+#ifdef USE_SETPOINT_WEIGHT_FILTER
+    LOOKUP_TABLE_ENTRY(lookupTableSetpointFilter),
+#endif // USE_SETPOINT_WEIGHT_FILTER
 };
 
 #undef LOOKUP_TABLE_ENTRY
@@ -730,8 +740,11 @@ const clivalue_t valueTable[] = {
     { "throttle_boost_cutoff",      VAR_UINT8 | PROFILE_VALUE,  .config.minmax = { 5, 50 }, PG_PID_PROFILE, offsetof(pidProfile_t, throttle_boost_cutoff) },
 
 #ifdef USE_SETPOINT_WEIGHT_FILTER
-    { "setpoint_weight_filter",     VAR_UINT8  | PROFILE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_PID_PROFILE, offsetof(pidProfile_t, setpoint_weight_filter) },
-    { "setpoint_weight_filter_cutoff",VAR_UINT8 | PROFILE_VALUE,  .config.minmax = { 5, 150 }, PG_PID_PROFILE, offsetof(pidProfile_t, setpoint_weight_filter_cutoff) },
+    { "setpoint_weight_filter",        VAR_UINT8 | PROFILE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_SETPOINT_WEIGHT_FILTER }, PG_PID_PROFILE, offsetof(pidProfile_t, setpoint_weight_filter) },
+    { "setpoint_weight_filter_pt1_cutoff", VAR_UINT8 | PROFILE_VALUE,  .config.minmax = { 5, 150 }, PG_PID_PROFILE, offsetof(pidProfile_t, setpoint_weight_filter_cutoff) },
+    { "setpoint_weight_filter_sma_samples",VAR_UINT8 | PROFILE_VALUE,  .config.minmax = { 2, MAX_SMA_WINDOW_SIZE }, PG_PID_PROFILE, offsetof(pidProfile_t, setpoint_weight_filter_sma_samples) },
+    { "setpoint_weight_filter_lma_samples",VAR_UINT8 | PROFILE_VALUE,  .config.minmax = { 2, MAX_LMA_WINDOW_SIZE }, PG_PID_PROFILE, offsetof(pidProfile_t, setpoint_weight_filter_lma_samples) },
+    { "setpoint_weight_filter_lma_weight", VAR_UINT16 | PROFILE_VALUE,  .config.minmax = { 0, 10000 }, PG_PID_PROFILE, offsetof(pidProfile_t, setpoint_weight_filter_lma_weight) },
 #endif // USE_SETPOINT_WEIGHT_FILTER
 
     { "p_pitch",                    VAR_UINT8  | PROFILE_VALUE, .config.minmax = { 0, 200 }, PG_PID_PROFILE, offsetof(pidProfile_t, pid[PID_PITCH].P) },
