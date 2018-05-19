@@ -138,6 +138,8 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .throttle_boost = 0,
         .throttle_boost_cutoff = 15,
         .iterm_rotation = false,
+        .setpoint_weight_filter = false,
+        .setpoint_weight_filter_cutoff = 40,
     );
 }
 
@@ -196,6 +198,10 @@ static FAST_RAM filterApplyFnPtr dtermLowpass2ApplyFn;
 static FAST_RAM pt1Filter_t dtermLowpass2[2];
 static FAST_RAM filterApplyFnPtr ptermYawLowpassApplyFn;
 static FAST_RAM pt1Filter_t ptermYawLowpass;
+
+#ifdef USE_SETPOINT_WEIGHT_FILTER
+static FAST_RAM pt1Filter_t setpointWeightLpf;
+#endif // USE_SETPOINT_WEIGHT_FILTER
 
 void pidInitFilters(const pidProfile_t *pidProfile)
 {
@@ -280,6 +286,10 @@ void pidInitFilters(const pidProfile_t *pidProfile)
     }
 
     pt1FilterInit(&throttleLpf, pt1FilterGain(pidProfile->throttle_boost_cutoff, dT));
+
+#ifdef USE_SETPOINT_WEIGHT_FILTER
+    pt1FilterInit(&setpointWeightLpf, pt1FilterGain(pidProfile->setpoint_weight_filter_cutoff, dT));
+#endif // USE_SETPOINT_WEIGHT_FILTER
 }
 
 typedef struct pidCoefficient_s {
@@ -307,6 +317,11 @@ static FAST_RAM float itermLimit;
 FAST_RAM float throttleBoost;
 pt1Filter_t throttleLpf;
 static FAST_RAM bool itermRotation;
+
+#ifdef USE_SETPOINT_WEIGHT_FILTER
+static FAST_RAM bool setpointWeightFilter;
+static FAST_RAM uint8_t setpointWeightFilterCutoff;
+#endif // USE_SETPOINT_WEIGHT_FILTER
 
 void pidInitConfig(const pidProfile_t *pidProfile)
 {
@@ -343,6 +358,11 @@ void pidInitConfig(const pidProfile_t *pidProfile)
     itermLimit = pidProfile->itermLimit;
     throttleBoost = pidProfile->throttle_boost * 0.1f;
     itermRotation = pidProfile->iterm_rotation == 1;
+
+#ifdef USE_SETPOINT_WEIGHT_FILTER
+    setpointWeightFilter = pidProfile->setpoint_weight_filter != 0;
+    setpointWeightFilterCutoff = pidProfile->setpoint_weight_filter_cutoff;
+#endif // USE_SETPOINT_WEIGHT_FILTER
 }
 
 void pidInit(const pidProfile_t *pidProfile)
@@ -623,8 +643,23 @@ void pidController(const pidProfile_t *pidProfile, const rollAndPitchTrims_t *an
             // This is done to avoid DTerm spikes that occur with dynamically
             // calculated deltaT whenever another task causes the PID
             // loop execution to be delayed.
+
+            float pidSetpointDelta = currentPidSetpoint - previousPidSetpoint[axis];
+
+#ifdef USE_SETPOINT_WEIGHT_FILTER
+            if (setpointWeightFilter) {
+if (axis == FD_ROLL) {
+    DEBUG_SET(DEBUG_SETPOINT_WEIGHT, 0, lrintf(pidSetpointDelta * 100.0f));
+}
+                pidSetpointDelta  = pt1FilterApply(&setpointWeightLpf, pidSetpointDelta);
+if (axis == FD_ROLL) {
+    DEBUG_SET(DEBUG_SETPOINT_WEIGHT, 1, lrintf(pidSetpointDelta * 100.0f));
+}
+            }
+#endif // USE_SETPOINT_WEIGHT_FILTER
+
             const float delta = (
-                dynCd * transition * (currentPidSetpoint - previousPidSetpoint[axis]) -
+                dynCd * transition * pidSetpointDelta -
                 (gyroRateDterm[axis] - previousGyroRateDterm[axis])) / dT;
 
             previousPidSetpoint[axis] = currentPidSetpoint;
