@@ -371,7 +371,7 @@ FAST_RAM_ZERO_INIT float throttleBoost;
 pt1Filter_t throttleLpf;
 #endif
 static FAST_RAM_ZERO_INIT bool itermRotation;
-static FAST_RAM_ZERO_INIT bool antiGravityNew;
+FAST_RAM_ZERO_INIT bool antiGravityNew;
 
 #if defined(USE_SMART_FEEDFORWARD)
 static FAST_RAM_ZERO_INIT bool smartFeedforward;
@@ -784,7 +784,7 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
     // gradually scale back integration when above windup point
     float dynCi;
 #if defined(USE_THROTTLE_BOOST)
-    if (antiGravityNew && (throttleBoost > 0)) {
+    if (antiGravityNew) {
     // Calculate new smooth anti-gravity effect where I accumulates faster with faster throttle movement
     // ThrottleHpf typically reaches max of 0.1 for fast throttle changes
     // AG Gain of 5000 results in itermAccelerateNew of 5 at throttleHpf of 0.1

@@ -171,6 +171,7 @@ extern uint32_t targetPidLooptime;
 
 extern float throttleBoost;
 extern pt1Filter_t throttleLpf;
+extern bool antiGravityNew;
 
 void pidResetITerm(void);
 void pidStabilisationState(pidStabilisationState_e pidControllerState);

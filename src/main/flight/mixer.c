@@ -810,7 +810,7 @@ FAST_CODE_NOINLINE void mixTable(timeUs_t currentTimeUs, uint8_t vbatPidCompensa
     }
 
 #if defined(USE_THROTTLE_BOOST)
-    if (throttleBoost > 0.0f) {
+    if (throttleBoost > 0.0f || antiGravityNew) {
         throttlehpf = throttle - pt1FilterApply(&throttleLpf, throttle);
         throttle = constrainf(throttle + throttleBoost * throttlehpf, 0.0f, 1.0f);
     }
