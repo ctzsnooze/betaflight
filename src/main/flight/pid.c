@@ -793,8 +793,9 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
         dynCi = MIN((1.0f - motorMixRange) * ITermWindupPointInv, 1.0f) * dT * itermAccelerateNew;
            DEBUG_SET(DEBUG_ITERM_RELAX, 0, lrintf(throttleHpf * 1000));
            DEBUG_SET(DEBUG_ITERM_RELAX, 1, lrintf(itermAccelerateNew * 1000));
-    } else {
+    } else 
 #endif
+    {
         // normal iTerm
         dynCi = MIN((1.0f - motorMixRange) * ITermWindupPointInv, 1.0f) * dT * itermAccelerator;
 #if defined(USE_THROTTLE_BOOST)
