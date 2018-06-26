@@ -789,7 +789,7 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
     // ThrottleHpf typically reaches max of 0.1 for fast throttle changes
     // AG Gain of 5000 results in itermAccelerateNew of 5 at throttleHpf of 0.1
     // if throttle movement is zero, throttleHpf is zero, I accumulates normally
-        float itermAccelerateNew = (1 + (fabsf(throttleHpf) * 0.01 * (pidProfile->itermAcceleratorGain - 1000)));
+        float itermAccelerateNew = (1 + (fabsf(throttleHpf) * 0.01f * (pidProfile->itermAcceleratorGain - 1000)));
         dynCi = MIN((1.0f - motorMixRange) * ITermWindupPointInv, 1.0f) * dT * itermAccelerateNew;
            DEBUG_SET(DEBUG_ITERM_RELAX, 0, lrintf(throttleHpf * 1000));
            DEBUG_SET(DEBUG_ITERM_RELAX, 1, lrintf(itermAccelerateNew * 1000));
