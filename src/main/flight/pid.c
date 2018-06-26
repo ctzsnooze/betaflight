@@ -798,9 +798,7 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
     {
         // normal iTerm
         dynCi = MIN((1.0f - motorMixRange) * ITermWindupPointInv, 1.0f) * dT * itermAccelerator;
-#if defined(USE_THROTTLE_BOOST)
     }
-#endif
 
     // Dynamic d component, enable 2-DOF PID controller only for rate mode
     const float dynCd = flightModeFlags ? 0.0f : dtermSetpointWeight;
