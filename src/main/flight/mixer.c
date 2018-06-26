@@ -334,7 +334,7 @@ float getMotorMixRange(void)
 
 float getThrottleHpf(void)
 {
-return throttlehpf;
+    return throttlehpf;
 }
 
 bool areMotorsRunning(void)
