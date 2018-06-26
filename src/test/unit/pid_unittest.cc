@@ -121,6 +121,7 @@ void setDefaultTestSettings(void) {
     pidProfile->itermLimit = 150;
     pidProfile->throttle_boost = 0;
     pidProfile->throttle_boost_cutoff = 15;
+    pidProfile->anti_gravity_new = false;
     pidProfile->iterm_rotation = false;
 
     gyro.targetLooptime = 4000;

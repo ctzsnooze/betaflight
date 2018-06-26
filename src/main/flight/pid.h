@@ -126,6 +126,7 @@ typedef struct pidProfile_s {
     uint8_t crash_recovery;                 // off, on, on and beeps when it is in crash recovery mode
     uint8_t throttle_boost;                 // how much should throttle be boosted during transient changes 0-100, 100 adds 10x hpf filtered throttle
     uint8_t throttle_boost_cutoff;          // Which cutoff frequency to use for throttle boost. higher cutoffs keep the boost on for shorter. Specified in hz.
+    uint8_t anti_gravity_new;               // Option to use new smooth anti-gravity that requires throttle high pass from throttle boost.
     uint8_t  iterm_rotation;                // rotates iterm to translate world errors to local coordinate system
     uint8_t  smart_feedforward;             // takes only the larger of P and the D weight feed forward term if they have the same sign.
     uint8_t iterm_relax_type;               // Specifies type of relax algorithm

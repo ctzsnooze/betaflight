@@ -144,6 +144,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .itermLimit = 150,
         .throttle_boost = 5,
         .throttle_boost_cutoff = 15,
+        .anti_gravity_new = true,
         .iterm_rotation = true,
         .smart_feedforward = false,
         .iterm_relax = ITERM_RELAX_OFF,
@@ -370,6 +371,7 @@ FAST_RAM_ZERO_INIT float throttleBoost;
 pt1Filter_t throttleLpf;
 #endif
 static FAST_RAM_ZERO_INIT bool itermRotation;
+static FAST_RAM_ZERO_INIT bool antiGravityNew;
 
 #if defined(USE_SMART_FEEDFORWARD)
 static FAST_RAM_ZERO_INIT bool smartFeedforward;
@@ -437,6 +439,7 @@ void pidInitConfig(const pidProfile_t *pidProfile)
     throttleBoost = pidProfile->throttle_boost * 0.1f;
 #endif
     itermRotation = pidProfile->iterm_rotation;
+    antiGravityNew = pidProfile->anti_gravity_new;
 #if defined(USE_SMART_FEEDFORWARD)
     smartFeedforward = pidProfile->smart_feedforward;
 #endif
@@ -771,6 +774,7 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
 
     const float tpaFactor = getThrottlePIDAttenuation();
     const float motorMixRange = getMotorMixRange();
+    const float throttleHpf = getThrottleHpf();
 
 #ifdef USE_YAW_SPIN_RECOVERY
     const bool yawSpinActive = gyroYawSpinDetected();
@@ -778,7 +782,24 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
 
     // Dynamic i component,
     // gradually scale back integration when above windup point
-    const float dynCi = MIN((1.0f - motorMixRange) * ITermWindupPointInv, 1.0f) * dT * itermAccelerator;
+    float dynCi;
+#if defined(USE_THROTTLE_BOOST)
+    if (antiGravityNew && (throttleBoost > 0)) {
+    // Calculate new smooth anti-gravity effect where I accumulates faster with faster throttle movement
+    // ThrottleHpf typically reaches max of 0.1 for fast throttle changes
+    // AG Gain of 5000 results in itermAccelerateNew of 5 at throttleHpf of 0.1
+    // if throttle movement is zero, throttleHpf is zero, I accumulates normally
+        float itermAccelerateNew = (1 + (fabsf(throttleHpf) * 0.01 * (pidProfile->itermAcceleratorGain - 1000)));
+        dynCi = MIN((1.0f - motorMixRange) * ITermWindupPointInv, 1.0f) * dT * itermAccelerateNew;
+           DEBUG_SET(DEBUG_ITERM_RELAX, 0, lrintf(throttleHpf * 1000));
+           DEBUG_SET(DEBUG_ITERM_RELAX, 1, lrintf(itermAccelerateNew * 1000));
+    } else {
+#endif
+        // normal iTerm
+        dynCi = MIN((1.0f - motorMixRange) * ITermWindupPointInv, 1.0f) * dT * itermAccelerator;
+#if defined(USE_THROTTLE_BOOST)
+    }
+#endif
 
     // Dynamic d component, enable 2-DOF PID controller only for rate mode
     const float dynCd = flightModeFlags ? 0.0f : dtermSetpointWeight;
@@ -839,8 +860,6 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
             }
             
             if (axis == FD_ROLL) {
-                DEBUG_SET(DEBUG_ITERM_RELAX, 0, lrintf(setpointHpf));
-                DEBUG_SET(DEBUG_ITERM_RELAX, 1, lrintf(itermRelaxFactor * 100.0f));
                 DEBUG_SET(DEBUG_ITERM_RELAX, 2, lrintf(itermErrorRate));
             }
 

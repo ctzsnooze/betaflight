@@ -817,6 +817,7 @@ const clivalue_t valueTable[] = {
 #if defined(USE_THROTTLE_BOOST)
     { "throttle_boost",             VAR_UINT8 | PROFILE_VALUE,  .config.minmax = { 0, 100 }, PG_PID_PROFILE, offsetof(pidProfile_t, throttle_boost) },
     { "throttle_boost_cutoff",      VAR_UINT8 | PROFILE_VALUE,  .config.minmax = { 5, 50 }, PG_PID_PROFILE, offsetof(pidProfile_t, throttle_boost_cutoff) },
+    { "anti_gravity_new",           VAR_UINT8  | PROFILE_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_PID_PROFILE, offsetof(pidProfile_t, anti_gravity_new) },
 #endif
 
 #ifdef USE_ACRO_TRAINER
