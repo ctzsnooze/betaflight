@@ -119,8 +119,6 @@ float getMotorMixRange(void);
 bool areMotorsRunning(void);
 bool mixerIsOutputSaturated(int axis, float errorRate);
 
-float getThrottleHpf(void);
-
 void mixerLoadMix(int index, motorMixer_t *customMixers);
 void mixerInit(mixerMode_e mixerMode);
 
@@ -136,3 +134,4 @@ void stopPwmAllMotors(void);
 float convertExternalToMotor(uint16_t externalValue);
 uint16_t convertMotorToExternal(float motorValue);
 bool mixerIsTricopter(void);
+

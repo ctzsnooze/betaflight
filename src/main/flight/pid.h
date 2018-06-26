@@ -126,7 +126,6 @@ typedef struct pidProfile_s {
     uint8_t crash_recovery;                 // off, on, on and beeps when it is in crash recovery mode
     uint8_t throttle_boost;                 // how much should throttle be boosted during transient changes 0-100, 100 adds 10x hpf filtered throttle
     uint8_t throttle_boost_cutoff;          // Which cutoff frequency to use for throttle boost. higher cutoffs keep the boost on for shorter. Specified in hz.
-    uint8_t anti_gravity_new;               // Option to use new smooth anti-gravity that requires throttle high pass from throttle boost.
     uint8_t iterm_rotation;                 // rotates iterm to translate world errors to local coordinate system
     uint8_t smart_feedforward;              // takes only the larger of P and the D weight feed forward term if they have the same sign.
     uint8_t iterm_relax_type;               // Specifies type of relax algorithm
@@ -139,6 +138,7 @@ typedef struct pidProfile_s {
     uint8_t abs_control_gain;               // How strongly should the absolute accumulated error be corrected for
     uint8_t abs_control_limit;              // Limit to the correction
     uint8_t abs_control_error_limit;        // Limit to the accumulated error
+    uint8_t anti_gravity_new;               // Option to use new smooth anti-gravity that requires throttle high pass from throttle boost.
 } pidProfile_t;
 
 #ifndef USE_OSD_SLAVE
@@ -171,12 +171,10 @@ extern uint32_t targetPidLooptime;
 
 extern float throttleBoost;
 extern pt1Filter_t throttleLpf;
-extern bool antiGravityNew;
 
 void pidResetITerm(void);
 void pidStabilisationState(pidStabilisationState_e pidControllerState);
 void pidSetItermAccelerator(float newItermAccelerator);
-float pidItermAccelerator(void);
 void pidInitFilters(const pidProfile_t *pidProfile);
 void pidInitConfig(const pidProfile_t *pidProfile);
 void pidInit(const pidProfile_t *pidProfile);
@@ -186,3 +184,7 @@ void pidAcroTrainerInit(void);
 void pidSetAcroTrainerState(bool newState);
 void pidInitSetpointDerivativeLpf(uint16_t filterCutoff, uint8_t debugAxis, uint8_t filterType);
 void pidUpdateSetpointDerivativeLpf(uint16_t filterCutoff);
+void pidUpdateAGThrottleFilter(float throttle);
+bool pidOSDAntiGravityActive(void);
+void pidSetAntiGravityState(bool newState);
+bool pidAntiGravityEnabled(void);

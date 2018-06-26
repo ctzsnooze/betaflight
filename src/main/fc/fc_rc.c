@@ -197,10 +197,12 @@ static void checkForThrottleErrorResetState(uint16_t rxRefreshRate)
 
     const int16_t rcCommandSpeed = rcCommand[THROTTLE] - rcCommandThrottlePrevious[index];
 
-    if (ABS(rcCommandSpeed) > throttleVelocityThreshold) {
-        pidSetItermAccelerator(CONVERT_PARAMETER_TO_FLOAT(currentPidProfile->itermAcceleratorGain));
-    } else {
-        pidSetItermAccelerator(1.0f);
+    if (!currentPidProfile->anti_gravity_new) {
+        if (ABS(rcCommandSpeed) > throttleVelocityThreshold) {
+            pidSetItermAccelerator(CONVERT_PARAMETER_TO_FLOAT(currentPidProfile->itermAcceleratorGain));
+        } else {
+            pidSetItermAccelerator(1.0f);
+        }
     }
 }
 
@@ -522,7 +524,7 @@ FAST_CODE void processRcCommand(void)
 {
     uint8_t updatedChannel;
 
-    if (isRXDataNew && isAntiGravityModeActive()) {
+    if (isRXDataNew && pidAntiGravityEnabled()) {
         checkForThrottleErrorResetState(currentRxRefreshRate);
     }
 

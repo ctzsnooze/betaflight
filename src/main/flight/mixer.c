@@ -121,7 +121,6 @@ static FAST_RAM_ZERO_INIT float motorMixRange;
 
 float FAST_RAM_ZERO_INIT motor[MAX_SUPPORTED_MOTORS];
 float motor_disarmed[MAX_SUPPORTED_MOTORS];
-static FAST_RAM_ZERO_INIT float throttleHpf;
 
 mixerMode_e currentMixerMode;
 static motorMixer_t currentMixer[MAX_SUPPORTED_MOTORS];
@@ -330,11 +329,6 @@ uint8_t getMotorCount(void)
 float getMotorMixRange(void)
 {
     return motorMixRange;
-}
-
-float getThrottleHpf(void)
-{
-    return throttleHpf;
 }
 
 bool areMotorsRunning(void)
@@ -809,9 +803,11 @@ FAST_CODE_NOINLINE void mixTable(timeUs_t currentTimeUs, uint8_t vbatPidCompensa
         motorMix[i] = mix;
     }
 
+    pidUpdateAGThrottleFilter(throttle);
+    
 #if defined(USE_THROTTLE_BOOST)
-    if (throttleBoost > 0.0f || antiGravityNew) {
-        throttleHpf = throttle - pt1FilterApply(&throttleLpf, throttle);
+    if (throttleBoost > 0.0f) {
+        const float throttleHpf = throttle - pt1FilterApply(&throttleLpf, throttle);
         throttle = constrainf(throttle + throttleBoost * throttleHpf, 0.0f, 1.0f);
     }
 #endif

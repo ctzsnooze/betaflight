@@ -1032,5 +1032,5 @@ extern "C" {
         return false;
     }
 
-    float pidItermAccelerator(void) { return 1.0; }
+    bool pidOSDAntiGravityActive(void) { return false; }
 }

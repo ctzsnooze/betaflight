@@ -848,6 +848,8 @@ bool processRx(timeUs_t currentTimeUs)
     pidSetAcroTrainerState(IS_RC_MODE_ACTIVE(BOXACROTRAINER) && sensors(SENSOR_ACC));
 #endif // USE_ACRO_TRAINER
 
+    pidSetAntiGravityState(IS_RC_MODE_ACTIVE(BOXANTIGRAVITY) || feature(FEATURE_ANTI_GRAVITY));
+    
     return true;
 }
 
