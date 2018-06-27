@@ -1032,5 +1032,5 @@ extern "C" {
         return false;
     }
 
-    bool pidOSDAntiGravityActive(void) { return false; }
+    bool pidOsdAntiGravityActive(void) { return false; }
 }
