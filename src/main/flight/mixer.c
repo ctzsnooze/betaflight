@@ -803,7 +803,7 @@ FAST_CODE_NOINLINE void mixTable(timeUs_t currentTimeUs, uint8_t vbatPidCompensa
         motorMix[i] = mix;
     }
 
-    pidUpdateAGThrottleFilter(throttle);
+    pidUpdateAntiGravityThrottleFilter(throttle);
     
 #if defined(USE_THROTTLE_BOOST)
     if (throttleBoost > 0.0f) {

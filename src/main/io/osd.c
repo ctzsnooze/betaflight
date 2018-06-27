@@ -594,7 +594,7 @@ static bool osdDrawSingleElement(uint8_t item)
 
     case OSD_ANTI_GRAVITY:
         {
-            if (pidOSDAntiGravityActive()) {
+            if (pidOsdAntiGravityActive()) {
                 strcpy(buff, "AG");
             }
 

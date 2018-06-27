@@ -153,7 +153,6 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .itermLimit = 150,
         .throttle_boost = 5,
         .throttle_boost_cutoff = 15,
-        .anti_gravity_new = true,
         .iterm_rotation = true,
         .smart_feedforward = false,
         .iterm_relax = ITERM_RELAX_OFF,
@@ -166,6 +165,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .abs_control_gain = 0,
         .abs_control_limit = 90,
         .abs_control_error_limit = 20,
+        .anti_gravity_new = true,
     );
 }
 
@@ -190,7 +190,7 @@ void pidSetItermAccelerator(float newItermAccelerator)
     itermAccelerator = newItermAccelerator;
 }
 
-bool pidOSDAntiGravityActive(void)
+bool pidOsdAntiGravityActive(void)
 {
     return (itermAccelerator > antiGravityOSDCutoff);
 }
@@ -414,7 +414,7 @@ static FAST_RAM_ZERO_INIT int acroTrainerAxisState[2];  // only need roll and pi
 static FAST_RAM_ZERO_INIT float acroTrainerGain;
 #endif // USE_ACRO_TRAINER
 
-void pidUpdateAGThrottleFilter(float throttle)
+void pidUpdateAntiGravityThrottleFilter(float throttle)
 {
     if (antiGravityNew) {
         antiGravityThrottleHpf = throttle - pt1FilterApply(&antiGravityThrottleLpf, throttle);
@@ -818,7 +818,7 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
         // antiGravityThrottleHpf typically reaches max of 0.1 for fast throttle changes
         // AG Gain of 5000 results in itermAccelerateFactor of 5 at antiGravityThrottleHpf of 0.1
         // if throttle movement is zero, antiGravityThrottleHpf is zero, I accumulates normally
-        itermAccelerator = (1 + (fabsf(antiGravityThrottleHpf) * 0.01f * (itermAcceleratorGain - 1000)));
+        itermAccelerator = 1 + fabsf(antiGravityThrottleHpf) * 0.01f * (itermAcceleratorGain - 1000);
         DEBUG_SET(DEBUG_ANTI_GRAVITY, 1, lrintf(antiGravityThrottleHpf * 1000));
     }
     
@@ -1070,7 +1070,8 @@ void pidSetAcroTrainerState(bool newState)
 
 void pidSetAntiGravityState(bool newState)
 {
-    if (newState != antiGravityEnabled) { // reset the accelerator on state changes
+    if (newState != antiGravityEnabled) {
+        // reset the accelerator on state changes
         itermAccelerator = 1.0f;
     }
     antiGravityEnabled = newState;
