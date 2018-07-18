@@ -42,16 +42,16 @@
 // A sampling frequency of 1000 and max frequency of 500 at a window size of 32 gives 16 frequency bins each with a width 31.25Hz
 // Eg [0,31), [31,62), [62, 93) etc
 
-#define FFT_WINDOW_SIZE       64  // max for f3 targets
+#define FFT_WINDOW_SIZE       64  // may even be too much for f4 targets, watch for looptime jitter
 #define FFT_BIN_COUNT         (FFT_WINDOW_SIZE / 2)
-#define FFT_BIN_START         5 // only search this and higher bins when finding the highest FFT peak
-#define FFT_SAMPLING_RATE     1600  // analyse up to 800Hz, 64 bins each 25Hz wide
+#define FFT_BIN_START         4 // only search this and higher for FFT peak, start 4.5*25 or 112Hz
+#define FFT_SAMPLING_RATE     1600  // analyse up to 800Hz, 32 bins each 25Hz wide
 #define FFT_BPF_HZ            450  // centre frequency of bandpass that constrains input to FFT
 #define BIQUAD_Q              0.07f  // bandpass quality factor, 0.1 for steep sided bandpass
 #define FFT_RESOLUTION        ((float)FFT_SAMPLING_RATE / FFT_WINDOW_SIZE) // hz per bin
 #define DYN_NOTCH_WIDTH       100  // notch width unless cutoff min or max are reached
 #define DYN_NOTCH_SMOOTH_FREQ 60  // lowpass frequency for smoothing notch centre point
-#define DYN_NOTCH_MIN_CENTRE  130  // notch centre point will not go below this, must be greater than cutoff
+#define DYN_NOTCH_MIN_CENTRE  125  // notch centre point will not go below this, must be greater than cutoff
 #define DYN_NOTCH_MAX_CENTRE  (FFT_SAMPLING_RATE / 2) // maximum notch centre frequency limited by nyquist
 #define DYN_NOTCH_MIN_CUTOFF  105  // lowest allowed notch cutoff frequency
 #define DYN_NOTCH_MAX_CUTOFF  300  // maximum allowed notch cutoff frequency
