@@ -12,6 +12,7 @@ static FAST_CODE void GYRO_FILTER_FUNCTION_NAME(gyroSensor_t *gyroSensor, timeDe
         if (isDynamicFilterActive()) {
             if (axis == X) {
                 GYRO_FILTER_DEBUG_SET(DEBUG_FFT, 0, lrintf(gyroADCf)); // store raw data
+                GYRO_FILTER_DEBUG_SET(DEBUG_FFT_FREQ, 3, lrintf(gyroADCf)); // store raw data
             }
             gyroADCf = gyroSensor->notchFilterDynApplyFn((filter_t *)&gyroSensor->notchFilterDyn[axis], gyroADCf);
             if (axis == X) {
