@@ -520,6 +520,7 @@ bool gyroInit(void)
 
     switch (debugMode) {
     case DEBUG_FFT:
+    case DEBUG_FFT_FREQ:
     case DEBUG_GYRO_RAW:
     case DEBUG_GYRO_SCALED:
     case DEBUG_GYRO_FILTERED:

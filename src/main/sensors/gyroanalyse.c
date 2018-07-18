@@ -44,14 +44,14 @@
 
 #define FFT_WINDOW_SIZE       32  // max for f3 targets
 #define FFT_BIN_COUNT         (FFT_WINDOW_SIZE / 2)
-#define FFT_BIN_START         4 // only search this and higher bins when finding the highest FFT peak
-#define FFT_SAMPLING_RATE     1000  // analyse up to 500Hz, 32 bins each 31.25Hz wide
+#define FFT_BIN_START         3 // only search this and higher bins for FFT peak, start 3.5 * 31.25 or about 109Hz
+#define FFT_SAMPLING_RATE     1000  // analyse up to 500Hz, 16 bins each 31.25Hz wide
 #define FFT_BPF_HZ            300  // centre frequency of bandpass that constrains input to FFT
-#define BIQUAD_Q              0.1f  // bandpass quality factor, 0.1 for steep sided bandpass
+#define FFT_BIQUAD_Q          0.1f  // bandpass quality factor, 0.1 for steep sided bandpass
 #define FFT_RESOLUTION        ((float)FFT_SAMPLING_RATE / FFT_WINDOW_SIZE) // hz per bin
 #define DYN_NOTCH_WIDTH       100  // notch width unless min or max are reached
 #define DYN_NOTCH_SMOOTH_FREQ 60  // lowpass frequency for smoothing notch centre point
-#define DYN_NOTCH_MIN_CENTRE  130  // notch centre point will not go below this, must be greater than cutoff
+#define DYN_NOTCH_MIN_CENTRE  125  // notch centre point will not go below this, must be greater than cutoff, mid of bottom bin
 #define DYN_NOTCH_MAX_CENTRE  (FFT_SAMPLING_RATE / 2) // maximum notch centre frequency limited by nyquist
 #define DYN_NOTCH_MIN_CUTOFF  105  // lowest allowed notch cutoff frequency
 #define DYN_NOTCH_MAX_CUTOFF  250  // maximum allowed notch cutoff frequency
@@ -113,7 +113,7 @@ void gyroDataAnalyseInit(uint32_t targetLooptimeUs)
     for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
         fftResult[axis].centerFreq = 200; // any init value
         biquadFilterInitLPF(&fftFreqFilter[axis], DYN_NOTCH_SMOOTH_FREQ, looptime);
-        biquadFilterInit(&fftGyroFilter[axis], FFT_BPF_HZ, 1000000 / FFT_SAMPLING_RATE, BIQUAD_Q, FILTER_BPF);
+        biquadFilterInit(&fftGyroFilter[axis], FFT_BPF_HZ, 1000000 / FFT_SAMPLING_RATE, FFT_BIQUAD_Q, FILTER_BPF);
     }
 }
 
