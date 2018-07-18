@@ -42,20 +42,21 @@
 // A sampling frequency of 1000 and max frequency of 500 at a window size of 32 gives 16 frequency bins each with a width 31.25Hz
 // Eg [0,31), [31,62), [62, 93) etc
 
-#define FFT_WINDOW_SIZE       32  // max for f3 targets
+#define FFT_WINDOW_SIZE       64  // max for f3 targets
 #define FFT_BIN_COUNT         (FFT_WINDOW_SIZE / 2)
-#define FFT_MIN_FREQ          100  // not interested in filtering frequencies below 100Hz
-#define FFT_SAMPLING_RATE     1000  // allows analysis up to 500Hz which is more than motors create
-#define FFT_MAX_FREQUENCY     (FFT_SAMPLING_RATE / 2) // nyquist rate
-#define FFT_BPF_HZ            200  // use a bandpass on gyro data to ignore extreme low and extreme high frequencies
+#define FFT_BIN_START         5 // only search this and higher bins when finding the highest FFT peak
+#define FFT_SAMPLING_RATE     1600  // analyse up to 800Hz, 64 bins each 25Hz wide
+#define FFT_BPF_HZ            450  // centre frequency of bandpass that constrains input to FFT
+#define BIQUAD_Q              0.07f  // bandpass quality factor, 0.1 for steep sided bandpass
 #define FFT_RESOLUTION        ((float)FFT_SAMPLING_RATE / FFT_WINDOW_SIZE) // hz per bin
-#define DYN_NOTCH_WIDTH       100  // just an orientation and start value
-#define DYN_NOTCH_CHANGERATE  60  // lower cut does not improve the performance much, higher cut makes it worse...
-#define DYN_NOTCH_MIN_CUTOFF  120  // don't cut too deep into low frequencies
-#define DYN_NOTCH_MAX_CUTOFF  200  // don't go above this cutoff (better filtering with "constant" delay at higher center frequencies)
+#define DYN_NOTCH_WIDTH       100  // notch width unless cutoff min or max are reached
+#define DYN_NOTCH_SMOOTH_FREQ 60  // lowpass frequency for smoothing notch centre point
+#define DYN_NOTCH_MIN_CENTRE  130  // notch centre point will not go below this, must be greater than cutoff
+#define DYN_NOTCH_MAX_CENTRE  (FFT_SAMPLING_RATE / 2) // maximum notch centre frequency limited by nyquist
+#define DYN_NOTCH_MIN_CUTOFF  105  // lowest allowed notch cutoff frequency
+#define DYN_NOTCH_MAX_CUTOFF  300  // maximum allowed notch cutoff frequency
 #define DYN_NOTCH_CALC_TICKS  (XYZ_AXIS_COUNT * 4) // we need 4 steps for each axis
 
-#define BIQUAD_Q 1.0f / sqrtf(2.0f)         // quality factor - butterworth
 
 static FAST_RAM_ZERO_INIT uint16_t fftSamplingScale;
 
@@ -111,7 +112,7 @@ void gyroDataAnalyseInit(uint32_t targetLooptimeUs)
     const float looptime = MAX(1000000u / FFT_SAMPLING_RATE, targetLooptimeUs * DYN_NOTCH_CALC_TICKS);
     for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
         fftResult[axis].centerFreq = 200; // any init value
-        biquadFilterInitLPF(&fftFreqFilter[axis], DYN_NOTCH_CHANGERATE, looptime);
+        biquadFilterInitLPF(&fftFreqFilter[axis], DYN_NOTCH_SMOOTH_FREQ, looptime);
         biquadFilterInit(&fftGyroFilter[axis], FFT_BPF_HZ, 1000000 / FFT_SAMPLING_RATE, BIQUAD_Q, FILTER_BPF);
     }
 }
@@ -250,7 +251,7 @@ void gyroDataAnalyseUpdate(biquadFilter_t *notchFilterDyn)
             fftResult[axis].maxVal = 0;
             // iterate over fft data and calculate weighted indexes
             float squaredData;
-            for (int i = 0; i < FFT_BIN_COUNT; i++) {
+            for (int i = FFT_BIN_START; i < FFT_BIN_COUNT; i++) {
                 squaredData = fftData[i] * fftData[i];  //more weight on higher peaks
                 fftResult[axis].maxVal = MAX(fftResult[axis].maxVal, squaredData);
                 fftSum += squaredData;
@@ -266,9 +267,8 @@ void gyroDataAnalyseUpdate(biquadFilter_t *notchFilterDyn)
 
                 // don't go below the minimal cutoff frequency + 10 and don't jump around too much
                 float centerFreq;
-                centerFreq = constrain(fftMeanIndex * FFT_RESOLUTION, DYN_NOTCH_MIN_CUTOFF + 10, FFT_MAX_FREQUENCY);
+                centerFreq = constrain(fftMeanIndex * FFT_RESOLUTION, DYN_NOTCH_MIN_CENTRE, DYN_NOTCH_MAX_CENTRE);
                 centerFreq = biquadFilterApply(&fftFreqFilter[axis], centerFreq);
-                centerFreq = constrain(centerFreq, DYN_NOTCH_MIN_CUTOFF + 10, FFT_MAX_FREQUENCY);
                 fftResult[axis].centerFreq = centerFreq;
                 if (axis == 0) {
                     DEBUG_SET(DEBUG_FFT, 3, lrintf(fftMeanIndex * 100));
