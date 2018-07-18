@@ -283,7 +283,7 @@ void gyroDataAnalyseUpdate(biquadFilter_t *notchFilterDyn)
         {
             // 7us
             // calculate new filter coefficients
-            float cutoffFreq = constrain(fftResult[axis].centerFreq - DYN_NOTCH_WIDTH, DYN_NOTCH_MIN_CUTOFF, DYN_NOTCH_MAX_CUTOFF);
+            float cutoffFreq = constrain(fftResult[axis].centerFreq * 0.8f, DYN_NOTCH_MIN_CUTOFF, DYN_NOTCH_MAX_CUTOFF);
             float notchQ = filterGetNotchQ(fftResult[axis].centerFreq, cutoffFreq);
             biquadFilterUpdate(&notchFilterDyn[axis], fftResult[axis].centerFreq, gyro.targetLooptime, notchQ, FILTER_NOTCH);
             DEBUG_SET(DEBUG_FFT_TIME, 1, micros() - startTime);
