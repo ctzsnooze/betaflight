@@ -181,6 +181,10 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .launchControlAllowTriggerReset = true,
         .use_integrated_yaw = false,
         .integrated_yaw_relax = 200,
+        .dterm_cut_percent = 50,
+        .dterm_cut_gain = 10,
+        .dterm_cut_range_hz = 50,
+        .dterm_cut_lowpass_hz = 5,
     );
 #ifdef USE_DYN_LPF
     pidProfile->dterm_lowpass_hz = 150;
@@ -236,12 +240,14 @@ static FAST_RAM_ZERO_INIT filterApplyFnPtr dtermLowpass2ApplyFn;
 static FAST_RAM_ZERO_INIT dtermLowpass_t dtermLowpass2[XYZ_AXIS_COUNT];
 static FAST_RAM_ZERO_INIT filterApplyFnPtr ptermYawLowpassApplyFn;
 static FAST_RAM_ZERO_INIT pt1Filter_t ptermYawLowpass;
+
 #if defined(USE_ITERM_RELAX)
 static FAST_RAM_ZERO_INIT pt1Filter_t windupLpf[XYZ_AXIS_COUNT];
 static FAST_RAM_ZERO_INIT uint8_t itermRelax;
 static FAST_RAM_ZERO_INIT uint8_t itermRelaxType;
 static FAST_RAM_ZERO_INIT uint8_t itermRelaxCutoff;
 #endif
+
 #if defined(USE_ABSOLUTE_CONTROL)
 STATIC_UNIT_TESTED FAST_RAM_ZERO_INIT float axisError[XYZ_AXIS_COUNT];
 static FAST_RAM_ZERO_INIT float acGain;
@@ -251,6 +257,12 @@ static FAST_RAM_ZERO_INIT float acCutoff;
 static FAST_RAM_ZERO_INIT pt1Filter_t acLpf[XYZ_AXIS_COUNT];
 #endif
 
+#if defined(USE_D_CUT)
+static FAST_RAM_ZERO_INIT filterApplyFnPtr dtermCutRangeApplyFn; 
+static FAST_RAM_ZERO_INIT biquadFilter_t dtermCutRange;
+static FAST_RAM_ZERO_INIT filterApplyFnPtr dtermCutLowpassApplyFn; 
+static FAST_RAM_ZERO_INIT pt1Filter_t dtermCutLowpass;
+#endif
 
 #ifdef USE_RC_SMOOTHING_FILTER
 static FAST_RAM_ZERO_INIT pt1Filter_t setpointDerivativePt1[XYZ_AXIS_COUNT];
@@ -371,6 +383,17 @@ void pidInitFilters(const pidProfile_t *pidProfile)
         }
     }
 #endif
+#if defined(USE_D_CUT)
+    if (pidProfile->dterm_cut_percent == 0) {
+        dtermCutRangeApplyFn = nullFilterApply;
+        dtermCutLowpassApplyFn = nullFilterApply;
+    } else {
+        dtermCutRangeApplyFn = (filterApplyFnPtr)biquadFilterApply;
+        biquadFilterInitLPF(&dtermCutRange, pidProfile->dterm_cut_range_hz, targetPidLooptime);
+        dtermCutLowpassApplyFn = (filterApplyFnPtr)pt1FilterApply;
+        pt1FilterInit(&dtermCutLowpass, pt1FilterGain(pidProfile->dterm_cut_lowpass_hz, dT));
+    }
+#endif
 
     pt1FilterInit(&antiGravityThrottleLpf, pt1FilterGain(ANTI_GRAVITY_THROTTLE_FILTER_CUTOFF, dT));
 }
@@ -487,6 +510,15 @@ static FAST_RAM_ZERO_INIT uint16_t dynLpfMin;
 static FAST_RAM_ZERO_INIT uint16_t dynLpfMax;
 #endif
 
+#ifdef USE_D_CUT
+static FAST_RAM_ZERO_INIT float dtermCutPercent;
+static FAST_RAM_ZERO_INIT float dtermCutPercentInv;
+static FAST_RAM_ZERO_INIT float dtermCutGain;
+static FAST_RAM_ZERO_INIT float dtermCutRangeHz;
+static FAST_RAM_ZERO_INIT float dtermCutLowpassHz;
+#endif
+static FAST_RAM_ZERO_INIT float dtermCutFactor;
+
 void pidInitConfig(const pidProfile_t *pidProfile)
 {
     if (pidProfile->feedForwardTransition == 0) {
@@ -597,6 +629,15 @@ void pidInitConfig(const pidProfile_t *pidProfile)
     useIntegratedYaw = pidProfile->use_integrated_yaw;
     integratedYawRelax = pidProfile->integrated_yaw_relax;
 #endif
+
+#if defined(USE_D_CUT)
+    dtermCutPercent = (float)pidProfile->dterm_cut_percent / 100.0f;
+    dtermCutPercentInv = 1.0f - dtermCutPercent;
+    dtermCutRangeHz = pidProfile->dterm_cut_range_hz;
+    dtermCutLowpassHz = pidProfile->dterm_cut_lowpass_hz;
+    dtermCutGain = (float)pidProfile->dterm_cut_gain * dtermCutPercent * DTERM_SCALE / dtermCutLowpassHz;
+#endif
+    dtermCutFactor = 1.0f;
 }
 
 void pidInit(const pidProfile_t *pidProfile)
@@ -1192,8 +1233,21 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
             if (cmpTimeUs(currentTimeUs, levelModeStartTimeUs) > CRASH_RECOVERY_DETECTION_DELAY_US) {
                 detectAndSetCrashRecovery(pidProfile->crash_recovery, axis, currentTimeUs, delta, errorRate);
             }
+#if defined(USE_D_CUT)
+            if (dtermCutPercent){
+                dtermCutFactor = dtermCutRangeApplyFn((filter_t *) &dtermCutRange, delta);
+                dtermCutFactor = fabsf(dtermCutFactor) * dtermCutGain;
+                dtermCutFactor = dtermCutLowpassApplyFn((filter_t *) &dtermCutLowpass, dtermCutFactor);
+                dtermCutFactor = fminf(dtermCutFactor, 1.0f);
+                dtermCutFactor = dtermCutPercentInv + (dtermCutFactor * dtermCutPercent);
+            }
+            if (axis == 0) {
+                DEBUG_SET(DEBUG_D_CUT, 3, lrintf(dtermCutFactor * 100.0f));
+            }
+#endif
 
-            pidData[axis].D = pidCoefficient[axis].Kd * delta * tpaFactor;
+            pidData[axis].D = pidCoefficient[axis].Kd * delta * tpaFactor * dtermCutFactor;
+
         } else {
             pidData[axis].D = 0;
         }
