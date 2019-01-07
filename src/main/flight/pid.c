@@ -1242,7 +1242,7 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
                 dtermCutFactor = dtermCutPercentInv + (dtermCutFactor * dtermCutPercent);
             }
             if (axis == FD_ROLL) {
-                DEBUG_SET(DEBUG_D_CUT, 3, lrintf(pidCoefficient[axis].Kd * dtermCutFactor * 10.0f));
+                DEBUG_SET(DEBUG_D_CUT, 3, lrintf(pidCoefficient[axis].Kd * dtermCutFactor * 10.0f / DTERM_SCALE));
             }
 #endif
 
