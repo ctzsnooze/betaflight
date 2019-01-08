@@ -259,9 +259,9 @@ static FAST_RAM_ZERO_INIT pt1Filter_t acLpf[XYZ_AXIS_COUNT];
 
 #if defined(USE_D_CUT)
 static FAST_RAM_ZERO_INIT filterApplyFnPtr dtermCutRangeApplyFn; 
-static FAST_RAM_ZERO_INIT biquadFilter_t dtermCutRange;
+static FAST_RAM_ZERO_INIT biquadFilter_t dtermCutRange[XYZ_AXIS_COUNT];
 static FAST_RAM_ZERO_INIT filterApplyFnPtr dtermCutLowpassApplyFn; 
-static FAST_RAM_ZERO_INIT pt1Filter_t dtermCutLowpass;
+static FAST_RAM_ZERO_INIT pt1Filter_t dtermCutLowpass[XYZ_AXIS_COUNT];
 #endif
 
 #ifdef USE_RC_SMOOTHING_FILTER
@@ -389,9 +389,11 @@ void pidInitFilters(const pidProfile_t *pidProfile)
         dtermCutLowpassApplyFn = nullFilterApply;
     } else {
         dtermCutRangeApplyFn = (filterApplyFnPtr)biquadFilterApply;
-        biquadFilterInitLPF(&dtermCutRange, pidProfile->dterm_cut_range_hz, targetPidLooptime);
         dtermCutLowpassApplyFn = (filterApplyFnPtr)pt1FilterApply;
-        pt1FilterInit(&dtermCutLowpass, pt1FilterGain(pidProfile->dterm_cut_lowpass_hz, dT));
+        for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
+            biquadFilterInitLPF(&dtermCutRange[axis], pidProfile->dterm_cut_range_hz, targetPidLooptime);
+            pt1FilterInit(&dtermCutLowpass[axis], pt1FilterGain(pidProfile->dterm_cut_lowpass_hz, dT));
+        }
     }
 #endif
 
@@ -1235,9 +1237,9 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
             }
 #if defined(USE_D_CUT)
             if (dtermCutPercent){
-                dtermCutFactor = dtermCutRangeApplyFn((filter_t *) &dtermCutRange, delta);
+                dtermCutFactor = dtermCutRangeApplyFn((filter_t *) &dtermCutRange[axis], delta);
                 dtermCutFactor = fabsf(dtermCutFactor) * dtermCutGain;
-                dtermCutFactor = dtermCutLowpassApplyFn((filter_t *) &dtermCutLowpass, dtermCutFactor);
+                dtermCutFactor = dtermCutLowpassApplyFn((filter_t *) &dtermCutLowpass[axis], dtermCutFactor);
                 dtermCutFactor = fminf(dtermCutFactor, 1.0f);
                 dtermCutFactor = dtermCutPercentInv + (dtermCutFactor * dtermCutPercent);
             }
