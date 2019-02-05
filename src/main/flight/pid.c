@@ -78,7 +78,7 @@ static FAST_RAM_ZERO_INIT float pidFrequency;
 static FAST_RAM_ZERO_INIT uint8_t antiGravityMode;
 static FAST_RAM_ZERO_INIT float antiGravityThrottleHpf;
 static FAST_RAM_ZERO_INIT uint16_t itermAcceleratorGain;
-static FAST_RAM float antiGravityOsdCutoff = 1.0f;
+static FAST_RAM float antiGravityOsdMinoff = 1.0f;
 static FAST_RAM_ZERO_INIT bool antiGravityEnabled;
 static FAST_RAM_ZERO_INIT bool zeroThrottleItermReset;
 
@@ -91,8 +91,11 @@ PG_REGISTER_WITH_RESET_TEMPLATE(pidConfig_t, pidConfig, PG_PID_CONFIG, 2);
 #else
 #define PID_PROCESS_DENOM_DEFAULT       2
 #endif
-#if defined(USE_D_CUT)
-#define D_CUT_GAIN_FACTOR 0.00005f
+#if defined(USE_D_MIN)
+#define D_MIN_GAIN_FACTOR 0.00005f
+#define D_MIN_SETPOINT_GAIN_FACTOR 0.00005f
+#define D_MIN_RANGE_HZ 80
+#define D_MIN_LOWPASS_HZ 10
 #endif
 
 #ifdef USE_RUNAWAY_TAKEOFF
@@ -119,14 +122,14 @@ PG_RESET_TEMPLATE(pidConfig_t, pidConfig,
 
 #define LAUNCH_CONTROL_YAW_ITERM_LIMIT 50 // yaw iterm windup limit when launch mode is "FULL" (all axes)
 
-PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, MAX_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 8);
+PG_REGISTER_ARRAY_WITH_RESET_FN(pidProfile_t, MAX_PROFILE_COUNT, pidProfiles, PG_PID_PROFILE, 9);
 
 void resetPidProfile(pidProfile_t *pidProfile)
 {
     RESET_CONFIG(pidProfile_t, pidProfile,
         .pid = {
-            [PID_ROLL] =  { 46, 65, 40, 60 },
-            [PID_PITCH] = { 50, 75, 44, 60 },
+            [PID_ROLL] =  { 46, 65, 35, 60 },
+            [PID_PITCH] = { 50, 75, 38, 60 },
             [PID_YAW] =   { 45, 100, 0, 100 },
             [PID_LEVEL] = { 50, 50, 75, 0 },
             [PID_MAG] =   { 40, 0, 0, 0 },
@@ -187,11 +190,12 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .use_integrated_yaw = false,
         .integrated_yaw_relax = 200,
         .thrustLinearization = 0,
-        .dterm_cut_percent = 65,
-        .dterm_cut_gain = 15,
-        .dterm_cut_range_hz = 40,
-        .dterm_cut_lowpass_hz = 7,
+        .d_min_roll = 20,
+        .d_min_pitch = 22,
+        .d_min_gain = 20,
+        .d_min_timing = 80,
         .motor_output_limit = 100,
+
     );
 #ifdef USE_DYN_LPF
     pidProfile->dterm_lowpass_hz = 150;
@@ -199,7 +203,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
     pidProfile->dterm_filter_type = FILTER_BIQUAD;
     pidProfile->dterm_filter2_type = FILTER_BIQUAD;
 #endif
-#ifndef USE_D_CUT
+#ifndef USE_D_MIN
     pidProfile->pid[PID_ROLL].D = 30;
     pidProfile->pid[PID_PITCH].D = 32;
 #endif
@@ -228,7 +232,7 @@ void pidSetItermAccelerator(float newItermAccelerator)
 
 bool pidOsdAntiGravityActive(void)
 {
-    return (itermAccelerator > antiGravityOsdCutoff);
+    return (itermAccelerator > antiGravityOsdMinoff);
 }
 
 void pidStabilisationState(pidStabilisationState_e pidControllerState)
@@ -270,11 +274,11 @@ static FAST_RAM_ZERO_INIT float acCutoff;
 static FAST_RAM_ZERO_INIT pt1Filter_t acLpf[XYZ_AXIS_COUNT];
 #endif
 
-#if defined(USE_D_CUT)
-static FAST_RAM_ZERO_INIT filterApplyFnPtr dtermCutRangeApplyFn; 
-static FAST_RAM_ZERO_INIT biquadFilter_t dtermCutRange[XYZ_AXIS_COUNT];
-static FAST_RAM_ZERO_INIT filterApplyFnPtr dtermCutLowpassApplyFn; 
-static FAST_RAM_ZERO_INIT pt1Filter_t dtermCutLowpass[XYZ_AXIS_COUNT];
+#if defined(USE_D_MIN)
+static FAST_RAM_ZERO_INIT filterApplyFnPtr dMinRangeApplyFn; 
+static FAST_RAM_ZERO_INIT biquadFilter_t dMinRange[XYZ_AXIS_COUNT];
+static FAST_RAM_ZERO_INIT filterApplyFnPtr dMinLowpassApplyFn; 
+static FAST_RAM_ZERO_INIT pt1Filter_t dMinLowpass[XYZ_AXIS_COUNT];
 #endif
 
 #ifdef USE_RC_SMOOTHING_FILTER
@@ -402,16 +406,16 @@ void pidInitFilters(const pidProfile_t *pidProfile)
         }
     }
 #endif
-#if defined(USE_D_CUT)
-    if (pidProfile->dterm_cut_percent == 0) {
-        dtermCutRangeApplyFn = nullFilterApply;
-        dtermCutLowpassApplyFn = nullFilterApply;
+#if defined(USE_D_MIN)
+    if ((pidProfile->d_min_roll == 0) && (pidProfile->d_min_pitch == 0)) {
+        dMinRangeApplyFn = nullFilterApply;
+        dMinLowpassApplyFn = nullFilterApply;
     } else {
-        dtermCutRangeApplyFn = (filterApplyFnPtr)biquadFilterApply;
-        dtermCutLowpassApplyFn = (filterApplyFnPtr)pt1FilterApply;
+        dMinRangeApplyFn = (filterApplyFnPtr)biquadFilterApply;
+        dMinLowpassApplyFn = (filterApplyFnPtr)pt1FilterApply;
         for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
-            biquadFilterInitLPF(&dtermCutRange[axis], pidProfile->dterm_cut_range_hz, targetPidLooptime);
-            pt1FilterInit(&dtermCutLowpass[axis], pt1FilterGain(pidProfile->dterm_cut_lowpass_hz, dT));
+            biquadFilterInitLPF(&dMinRange[axis], D_MIN_RANGE_HZ, targetPidLooptime);
+            pt1FilterInit(&dMinLowpass[axis], pt1FilterGain(D_MIN_LOWPASS_HZ, dT));
         }
     }
 #endif
@@ -537,14 +541,15 @@ static FAST_RAM_ZERO_INIT uint16_t dynLpfMin;
 static FAST_RAM_ZERO_INIT uint16_t dynLpfMax;
 #endif
 
-#ifdef USE_D_CUT
-static FAST_RAM_ZERO_INIT float dtermCutPercent;
-static FAST_RAM_ZERO_INIT float dtermCutPercentInv;
-static FAST_RAM_ZERO_INIT float dtermCutGain;
-static FAST_RAM_ZERO_INIT float dtermCutRangeHz;
-static FAST_RAM_ZERO_INIT float dtermCutLowpassHz;
+#ifdef USE_D_MIN
+static FAST_RAM_ZERO_INIT float dMinPercentRoll;
+static FAST_RAM_ZERO_INIT float dMinPercentPitch;
+static FAST_RAM_ZERO_INIT float dMinGyroGain;
+static FAST_RAM_ZERO_INIT float dMinSetpointGain;
 #endif
-static FAST_RAM_ZERO_INIT float dtermCutFactor;
+static FAST_RAM_ZERO_INIT float dMinFactor;
+static FAST_RAM_ZERO_INIT float dMinGyroFactor;
+static FAST_RAM_ZERO_INIT float dMinSetpointFactor;
 
 void pidInitConfig(const pidProfile_t *pidProfile)
 {
@@ -594,9 +599,9 @@ void pidInitConfig(const pidProfile_t *pidProfile)
     // For the new AG it's a continuous floating value so we want to trigger the OSD
     // display when it exceeds 25% of its possible range. This gives a useful indication
     // of AG activity without excessive display.
-    antiGravityOsdCutoff = 1.0f;
+    antiGravityOsdMinoff = 1.0f;
     if (antiGravityMode == ANTI_GRAVITY_SMOOTH) {
-        antiGravityOsdCutoff += ((itermAcceleratorGain - 1000) / 1000.0f) * 0.25f;
+        antiGravityOsdMinoff += ((itermAcceleratorGain - 1000) / 1000.0f) * 0.25f;
     }
 
 #if defined(USE_SMART_FEEDFORWARD)
@@ -664,15 +669,24 @@ void pidInitConfig(const pidProfile_t *pidProfile)
         thrustLinearizationB = (1.0f - thrustLinearization) / (2.0f * thrustLinearization);
     }
 #endif    
-#if defined(USE_D_CUT)
-    dtermCutPercent = pidProfile->dterm_cut_percent / 100.0f;
-    dtermCutPercentInv = 1.0f - dtermCutPercent;
-    dtermCutRangeHz = pidProfile->dterm_cut_range_hz;
-    dtermCutLowpassHz = pidProfile->dterm_cut_lowpass_hz;
-    dtermCutGain = pidProfile->dterm_cut_gain * dtermCutPercent * D_CUT_GAIN_FACTOR / dtermCutLowpassHz;
+#if defined(USE_D_MIN)
+    if ((pidProfile->d_min_roll > 0) && (pidProfile->d_min_roll < pidProfile->pid[FD_ROLL].D)){
+        dMinPercentRoll = (pidProfile->d_min_roll) / (float)(pidProfile->pid[FD_ROLL].D);
+    } else {
+    dMinPercentRoll = 0;
+    }
+    if ((pidProfile->d_min_pitch > 0) && (pidProfile->d_min_pitch < pidProfile->pid[FD_PITCH].D)){
+        dMinPercentPitch = (pidProfile->d_min_pitch / (float)pidProfile->pid[FD_PITCH].D);
+    } else {
+    dMinPercentPitch = 0;
+    }
+    dMinGyroGain = pidProfile->d_min_gain * D_MIN_GAIN_FACTOR * pidProfile->d_min_timing / (100 * D_MIN_LOWPASS_HZ);
+    dMinSetpointGain = pidProfile->d_min_gain * D_MIN_SETPOINT_GAIN_FACTOR * (100 - pidProfile->d_min_timing) * pidFrequency / (100 * D_MIN_LOWPASS_HZ);
     // lowpass included inversely in gain since stronger lowpass decreases peak effect
 #endif
-    dtermCutFactor = 1.0f;
+    dMinFactor = 1.0f;
+    dMinGyroFactor = 1.0f;
+    dMinSetpointFactor = 1.0f;
 }
 
 void pidInit(const pidProfile_t *pidProfile)
@@ -1284,6 +1298,15 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
 #endif
         pidData[axis].I = constrainf(iterm + Ki * itermErrorRate * dynCi, -itermLimit, itermLimit);
 
+        // -----calculate pidSetpointDelta
+        float pidSetpointDelta = 0;
+        pidSetpointDelta = currentPidSetpoint - previousPidSetpoint[axis];
+        previousPidSetpoint[axis] = currentPidSetpoint;
+
+#ifdef USE_RC_SMOOTHING_FILTER
+        pidSetpointDelta = applyRcSmoothingDerivativeFilter(axis, pidSetpointDelta);
+#endif // USE_RC_SMOOTHING_FILTER
+
         // -----calculate D component
         // disable D if launch control is active
         if ((pidCoefficient[axis].Kd > 0) && !launchControlActive){
@@ -1299,22 +1322,30 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
             if (cmpTimeUs(currentTimeUs, levelModeStartTimeUs) > CRASH_RECOVERY_DETECTION_DELAY_US) {
                 detectAndSetCrashRecovery(pidProfile->crash_recovery, axis, currentTimeUs, delta, errorRate);
             }
-#if defined(USE_D_CUT)
-            if (dtermCutPercent){
-                dtermCutFactor = dtermCutRangeApplyFn((filter_t *) &dtermCutRange[axis], delta);
-                dtermCutFactor = fabsf(dtermCutFactor) * dtermCutGain;
-                dtermCutFactor = dtermCutLowpassApplyFn((filter_t *) &dtermCutLowpass[axis], dtermCutFactor);
-                dtermCutFactor = MIN(dtermCutFactor, 1.0f);
-                dtermCutFactor = dtermCutPercentInv + (dtermCutFactor * dtermCutPercent);
+#if defined(USE_D_MIN)
+            if ((dMinPercentRoll) || (dMinPercentPitch)) {
+                dMinGyroFactor = dMinRangeApplyFn((filter_t *) &dMinRange[axis], delta);
+                dMinGyroFactor = (fabsf(dMinGyroFactor)) * dMinGyroGain;
+                dMinSetpointFactor = (fabsf(pidSetpointDelta)) * dMinSetpointGain;
+                dMinFactor = dMinGyroFactor + dMinSetpointFactor;
+                if (axis == FD_ROLL) {
+                    dMinFactor = dMinPercentRoll + (1.0f - dMinPercentRoll) * dMinFactor;
+                } else if (axis == FD_PITCH) {
+                    dMinFactor = dMinPercentPitch + (1.0f - dMinPercentPitch) * dMinFactor;
+                }
+                dMinFactor = dMinLowpassApplyFn((filter_t *) &dMinLowpass[axis], dMinFactor);
+                dMinFactor = MIN(dMinFactor, 1.0f);
             }
             if (axis == FD_ROLL) {
-                DEBUG_SET(DEBUG_D_CUT, 2, lrintf(pidCoefficient[axis].Kd * dtermCutFactor * 10.0f / DTERM_SCALE));
+                DEBUG_SET(DEBUG_D_MIN, 0, lrintf(dMinGyroFactor * 100.0f));
+                DEBUG_SET(DEBUG_D_MIN, 1, lrintf(dMinSetpointFactor * 100.0f));
+                DEBUG_SET(DEBUG_D_MIN, 2, lrintf(pidCoefficient[axis].Kd * dMinFactor * 10.0f / DTERM_SCALE));
             } else if (axis == FD_PITCH) {
-                DEBUG_SET(DEBUG_D_CUT, 3, lrintf(pidCoefficient[axis].Kd * dtermCutFactor * 10.0f / DTERM_SCALE));
+                DEBUG_SET(DEBUG_D_MIN, 3, lrintf(pidCoefficient[axis].Kd * dMinFactor * 10.0f / DTERM_SCALE));
             }
 #endif
 
-            pidData[axis].D = pidCoefficient[axis].Kd * delta * tpaFactor * dtermCutFactor;
+            pidData[axis].D = pidCoefficient[axis].Kd * delta * tpaFactor * dMinFactor;
 
         } else {
             pidData[axis].D = 0;
@@ -1322,7 +1353,6 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
         previousGyroRateDterm[axis] = gyroRateDterm[axis];
 
         // -----calculate feedforward component
-        
         // Only enable feedforward for rate mode and if launch control is inactive
         const float feedforwardGain = (flightModeFlags || launchControlActive) ? 0.0f : pidCoefficient[axis].Kf;
         
