@@ -78,7 +78,7 @@ static FAST_RAM_ZERO_INIT float pidFrequency;
 static FAST_RAM_ZERO_INIT uint8_t antiGravityMode;
 static FAST_RAM_ZERO_INIT float antiGravityThrottleHpf;
 static FAST_RAM_ZERO_INIT uint16_t itermAcceleratorGain;
-static FAST_RAM float antiGravityOsdMinoff = 1.0f;
+static FAST_RAM float antiGravityOsdCutoff = 1.0f;
 static FAST_RAM_ZERO_INIT bool antiGravityEnabled;
 static FAST_RAM_ZERO_INIT bool zeroThrottleItermReset;
 
@@ -193,7 +193,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .d_min_roll = 20,
         .d_min_pitch = 22,
         .d_min_gain = 20,
-        .d_min_timing = 80,
+        .d_min_advance = 20,
         .motor_output_limit = 100,
 
     );
@@ -232,7 +232,7 @@ void pidSetItermAccelerator(float newItermAccelerator)
 
 bool pidOsdAntiGravityActive(void)
 {
-    return (itermAccelerator > antiGravityOsdMinoff);
+    return (itermAccelerator > antiGravityOsdCutoff);
 }
 
 void pidStabilisationState(pidStabilisationState_e pidControllerState)
@@ -599,10 +599,10 @@ void pidInitConfig(const pidProfile_t *pidProfile)
     // For the new AG it's a continuous floating value so we want to trigger the OSD
     // display when it exceeds 25% of its possible range. This gives a useful indication
     // of AG activity without excessive display.
-    antiGravityOsdMinoff = 1.0f;
+    antiGravityOsdCutoff = 1.0f;
     if (antiGravityMode == ANTI_GRAVITY_SMOOTH) {
-        antiGravityOsdMinoff += ((itermAcceleratorGain - 1000) / 1000.0f) * 0.25f;
-    }
+        antiGravityOsdCutoff += ((itermAcceleratorGain - 1000) / 1000.0f) * 0.25f;
+    }   
 
 #if defined(USE_SMART_FEEDFORWARD)
     smartFeedforward = pidProfile->smart_feedforward;
@@ -680,8 +680,8 @@ void pidInitConfig(const pidProfile_t *pidProfile)
     } else {
     dMinPercentPitch = 0;
     }
-    dMinGyroGain = pidProfile->d_min_gain * D_MIN_GAIN_FACTOR * pidProfile->d_min_timing / (100 * D_MIN_LOWPASS_HZ);
-    dMinSetpointGain = pidProfile->d_min_gain * D_MIN_SETPOINT_GAIN_FACTOR * (100 - pidProfile->d_min_timing) * pidFrequency / (100 * D_MIN_LOWPASS_HZ);
+    dMinGyroGain = pidProfile->d_min_gain * D_MIN_GAIN_FACTOR / D_MIN_LOWPASS_HZ;
+    dMinSetpointGain = pidProfile->d_min_gain * D_MIN_SETPOINT_GAIN_FACTOR * pidProfile->d_min_advance * pidFrequency / (100 * D_MIN_LOWPASS_HZ);
     // lowpass included inversely in gain since stronger lowpass decreases peak effect
 #endif
     dMinFactor = 1.0f;
@@ -1327,7 +1327,7 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, const rollAndPitchT
                 dMinGyroFactor = dMinRangeApplyFn((filter_t *) &dMinRange[axis], delta);
                 dMinGyroFactor = (fabsf(dMinGyroFactor)) * dMinGyroGain;
                 dMinSetpointFactor = (fabsf(pidSetpointDelta)) * dMinSetpointGain;
-                dMinFactor = dMinGyroFactor + dMinSetpointFactor;
+                dMinFactor = MAX(dMinGyroFactor, dMinSetpointFactor);
                 if (axis == FD_ROLL) {
                     dMinFactor = dMinPercentRoll + (1.0f - dMinPercentRoll) * dMinFactor;
                 } else if (axis == FD_PITCH) {

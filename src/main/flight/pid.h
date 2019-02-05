@@ -163,7 +163,7 @@ typedef struct pidProfile_s {
     uint8_t d_min_roll;                     // Minimum D value on roll axis
     uint8_t d_min_pitch;                    // Minimum D value on pitch axis
     uint8_t d_min_gain;                     // Gain factor for amount of gyro activity required to remove the dterm cut
-    uint8_t d_min_timing;                   // Gain factor for amount of gyro activity required to remove the dterm cut
+    uint8_t d_min_advance;                   // Gain factor for amount of gyro activity required to remove the dterm cut
     uint8_t motor_output_limit;             // Upper limit of the motor output (percent)
 
 } pidProfile_t;
