@@ -602,7 +602,7 @@ void pidInitConfig(const pidProfile_t *pidProfile)
     antiGravityOsdCutoff = 1.0f;
     if (antiGravityMode == ANTI_GRAVITY_SMOOTH) {
         antiGravityOsdCutoff += ((itermAcceleratorGain - 1000) / 1000.0f) * 0.25f;
-    }   
+    }
 
 #if defined(USE_SMART_FEEDFORWARD)
     smartFeedforward = pidProfile->smart_feedforward;
