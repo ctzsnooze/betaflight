@@ -570,7 +570,7 @@ static long cmsx_FilterPerProfileRead(void)
     cmsx_dterm_notch_cutoff = pidProfile->dterm_notch_cutoff;
 #ifdef USE_D_MIN
     cmsx_d_min_roll     = pidProfile->d_min_roll;
-    cmsx_d_min_pitch    = pidProfile->d_min_roll;
+    cmsx_d_min_pitch    = pidProfile->d_min_pitch;
 #endif
     cmsx_yaw_lowpass_hz     = pidProfile->yaw_lowpass_hz;
 
