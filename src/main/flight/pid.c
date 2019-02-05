@@ -546,10 +546,10 @@ static FAST_RAM_ZERO_INIT float dMinPercentRoll;
 static FAST_RAM_ZERO_INIT float dMinPercentPitch;
 static FAST_RAM_ZERO_INIT float dMinGyroGain;
 static FAST_RAM_ZERO_INIT float dMinSetpointGain;
-#endif
-static FAST_RAM_ZERO_INIT float dMinFactor;
 static FAST_RAM_ZERO_INIT float dMinGyroFactor;
 static FAST_RAM_ZERO_INIT float dMinSetpointFactor;
+#endif
+static FAST_RAM_ZERO_INIT float dMinFactor;
 
 void pidInitConfig(const pidProfile_t *pidProfile)
 {
@@ -683,10 +683,10 @@ void pidInitConfig(const pidProfile_t *pidProfile)
     dMinGyroGain = pidProfile->d_min_gain * D_MIN_GAIN_FACTOR / D_MIN_LOWPASS_HZ;
     dMinSetpointGain = pidProfile->d_min_gain * D_MIN_SETPOINT_GAIN_FACTOR * pidProfile->d_min_advance * pidFrequency / (100 * D_MIN_LOWPASS_HZ);
     // lowpass included inversely in gain since stronger lowpass decreases peak effect
-#endif
-    dMinFactor = 1.0f;
     dMinGyroFactor = 1.0f;
     dMinSetpointFactor = 1.0f;
+#endif
+    dMinFactor = 1.0f;
 }
 
 void pidInit(const pidProfile_t *pidProfile)
