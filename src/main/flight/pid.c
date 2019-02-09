@@ -410,21 +410,28 @@ void pidInitFilters(const pidProfile_t *pidProfile)
     }
 #endif
 #if defined(USE_D_MIN)
-    dMin[FD_ROLL] = pidProfile->d_min_roll;
-    dMin[FD_PITCH] = pidProfile->d_min_pitch;
-    dMin[FD_YAW] = pidProfile->d_min_yaw;
-    for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
-        if (dMin[axis] == 0) {
-            dMinRangeApplyFn = nullFilterApply;
-            dMinLowpassApplyFn = nullFilterApply;
-        } else {
-            dMinRangeApplyFn = (filterApplyFnPtr)biquadFilterApply;
-            dMinLowpassApplyFn = (filterApplyFnPtr)pt1FilterApply;
+     // If the d_min pid profile values are all zero e.g. completely disabled
+     if (!pidProfile->d_min_roll &&
+         !pidProfile->d_min_pitch &&
+         !pidProfile->d_min_yaw) {
+         // Set both apply functions to the null filter apply.
+         dMinRangeApplyFn = nullFilterApply;
+         dMinLowpassApplyFn = nullFilterApply;
+     } else {
+         // Otherwise, store the pid profile values into float array dMin, used later to calculate dMinPercent.
+         dMin[FD_ROLL] = pidProfile->d_min_roll;
+         dMin[FD_PITCH] = pidProfile->d_min_pitch;
+         dMin[FD_YAW] = pidProfile->d_min_yaw;
 
-            biquadFilterInitLPF(&dMinRange[axis], D_MIN_RANGE_HZ, targetPidLooptime);
-            pt1FilterInit(&dMinLowpass[axis], pt1FilterGain(D_MIN_LOWPASS_HZ, dT));
-        }
-    }
+         // Set the filters to the real function pointers.
+         dMinRangeApplyFn = (filterApplyFnPtr)biquadFilterApply;
+         dMinLowpassApplyFn = (filterApplyFnPtr)pt1FilterApply;
+     }
+
+     for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
+       biquadFilterInitLPF(&dMinRange[axis], D_MIN_RANGE_HZ, targetPidLooptime);
+       pt1FilterInit(&dMinLowpass[axis], pt1FilterGain(D_MIN_LOWPASS_HZ, dT));
+     }
 #endif
 
     pt1FilterInit(&antiGravityThrottleLpf, pt1FilterGain(ANTI_GRAVITY_THROTTLE_FILTER_CUTOFF, dT));
