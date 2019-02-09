@@ -277,10 +277,8 @@ static FAST_RAM_ZERO_INIT pt1Filter_t acLpf[XYZ_AXIS_COUNT];
 #endif
 
 #if defined(USE_D_MIN)
-static FAST_RAM_ZERO_INIT float dMin[XYZ_AXIS_COUNT];
-static FAST_RAM_ZERO_INIT filterApplyFnPtr dMinRangeApplyFn; 
+static FAST_RAM_ZERO_INIT uint8_t dMin[XYZ_AXIS_COUNT];
 static FAST_RAM_ZERO_INIT biquadFilter_t dMinRange[XYZ_AXIS_COUNT];
-static FAST_RAM_ZERO_INIT filterApplyFnPtr dMinLowpassApplyFn; 
 static FAST_RAM_ZERO_INIT pt1Filter_t dMinLowpass[XYZ_AXIS_COUNT];
 #endif
 
@@ -410,27 +408,17 @@ void pidInitFilters(const pidProfile_t *pidProfile)
     }
 #endif
 #if defined(USE_D_MIN)
-     // If the d_min pid profile values are all zero e.g. completely disabled
-     if (!pidProfile->d_min_roll &&
-         !pidProfile->d_min_pitch &&
-         !pidProfile->d_min_yaw) {
-         // Set both apply functions to the null filter apply.
-         dMinRangeApplyFn = nullFilterApply;
-         dMinLowpassApplyFn = nullFilterApply;
-     } else {
-         // Otherwise, store the pid profile values into float array dMin, used later to calculate dMinPercent.
-         dMin[FD_ROLL] = pidProfile->d_min_roll;
-         dMin[FD_PITCH] = pidProfile->d_min_pitch;
-         dMin[FD_YAW] = pidProfile->d_min_yaw;
+    dMin[FD_ROLL] = pidProfile->d_min_roll;
+    dMin[FD_PITCH] = pidProfile->d_min_pitch;
+    dMin[FD_YAW] = pidProfile->d_min_yaw;
 
-         // Set the filters to the real function pointers.
-         dMinRangeApplyFn = (filterApplyFnPtr)biquadFilterApply;
-         dMinLowpassApplyFn = (filterApplyFnPtr)pt1FilterApply;
-     }
-
-     for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
-       biquadFilterInitLPF(&dMinRange[axis], D_MIN_RANGE_HZ, targetPidLooptime);
-       pt1FilterInit(&dMinLowpass[axis], pt1FilterGain(D_MIN_LOWPASS_HZ, dT));
+    // Initialize the filters for all axis even if the dMin[axis] value is 0
+    // Otherwise if the pidProfile->d_min_xxx parameters are ever added to
+    // in-flight adjustments and transition from 0 to > 0 in flight the feature
+    // won't work because the filter wasn't initialized.
+    for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
+        biquadFilterInitLPF(&dMinRange[axis], D_MIN_RANGE_HZ, targetPidLooptime);
+        pt1FilterInit(&dMinLowpass[axis], pt1FilterGain(D_MIN_LOWPASS_HZ, dT));
      }
 #endif
 
@@ -1358,21 +1346,20 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, timeUs_t currentTim
 
             float dMinFactor = 1.0f;
 #if defined(USE_D_MIN)
-            if (dMinPercent[axis]) {
-                float dMinFactor = 1.0f;
-                float dMinGyroFactor = dMinRangeApplyFn((filter_t *) &dMinRange[axis], delta);
+            if (dMinPercent[axis] > 0) {
+                float dMinGyroFactor = biquadFilterApply(&dMinRange[axis], delta);
                 dMinGyroFactor = fabsf(dMinGyroFactor) * dMinGyroGain;
                 const float dMinSetpointFactor = (fabsf(pidSetpointDelta)) * dMinSetpointGain;
                 dMinFactor = MAX(dMinGyroFactor, dMinSetpointFactor);
                 dMinFactor = dMinPercent[axis] + (1.0f - dMinPercent[axis]) * dMinFactor;
-                dMinFactor = dMinLowpassApplyFn((filter_t *) &dMinLowpass[axis], dMinFactor);
+                dMinFactor = pt1FilterApply(&dMinLowpass[axis], dMinFactor);
                 dMinFactor = MIN(dMinFactor, 1.0f);
                 if (axis == FD_ROLL) {
-                    DEBUG_SET(DEBUG_D_MIN, 0, lrintf(dMinGyroFactor * 100.0f));
-                    DEBUG_SET(DEBUG_D_MIN, 1, lrintf(dMinSetpointFactor * 100.0f));
-                    DEBUG_SET(DEBUG_D_MIN, 2, lrintf(pidCoefficient[axis].Kd * dMinFactor * 10.0f / DTERM_SCALE));
+                    DEBUG_SET(DEBUG_D_MIN, 0, lrintf(dMinGyroFactor * 100));
+                    DEBUG_SET(DEBUG_D_MIN, 1, lrintf(dMinSetpointFactor * 100));
+                    DEBUG_SET(DEBUG_D_MIN, 2, lrintf(pidCoefficient[axis].Kd * dMinFactor * 10 / DTERM_SCALE));
                 } else if (axis == FD_PITCH) {
-                    DEBUG_SET(DEBUG_D_MIN, 3, lrintf(pidCoefficient[axis].Kd * dMinFactor * 10.0f / DTERM_SCALE));
+                    DEBUG_SET(DEBUG_D_MIN, 3, lrintf(pidCoefficient[axis].Kd * dMinFactor * 10 / DTERM_SCALE));
                 }
             }
 #endif
