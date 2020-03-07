@@ -225,10 +225,6 @@ void batteryUpdatePresence(void)
         batteryWarningVoltage = 0;
         batteryCriticalVoltage = 0;
     }
-    if (debugMode == DEBUG_BATTERY) {
-        debug[2] = batteryCellCount;
-        debug[3] = isVoltageStable();
-    }
 }
 
 static void batteryUpdateVoltageState(void)
