@@ -631,7 +631,7 @@ static void calculateThrottleAndCurrentMotorEndpoints(timeUs_t currentTimeUs)
             if (vbatRangeToCompensate > 0.0f) {
                batteryGoodness = 1.0f - constrainf((vbatFull - currentCellVoltage) / vbatRangeToCompensate, 0.0f, 1.0f);
             }
-            motorRangeAttenuationFactor = (vbatRangeToCompensate / vbatFull) * batteryGoodness;
+            motorRangeAttenuationFactor = (vbatRangeToCompensate / vbatFull) * batteryGoodness * vbatSagCompensationFactor;
             if (debugMode == DEBUG_BATTERY) {
                 debug[2] = lrintf(batteryGoodness * 100);
                 debug[3] = lrintf(motorRangeAttenuationFactor * 100);
