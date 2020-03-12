@@ -296,7 +296,7 @@ static FAST_RAM_ZERO_INIT float idleThrottleOffset;
 static FAST_RAM_ZERO_INIT float idleMinMotorRps;
 static FAST_RAM_ZERO_INIT float idleP;
 #endif
-static FAST_RAM_ZERO_INIT float motorOutputLimitReduction;
+static FAST_RAM_ZERO_INIT float vbatSagCompensationFactor;
 
 uint8_t getMotorCount(void)
 {
@@ -363,9 +363,10 @@ void mixerInit(mixerMode_e mixerMode)
     idleThrottleOffset = motorConfig()->digitalIdleOffsetValue * 0.0001f;
     idleP = currentPidProfile->idle_p * 0.0001f;
 #endif
-    motorOutputLimitReduction = 0.0f;
-    if (currentPidProfile->vbat_motor_output_scale < 100) {
-        motorOutputLimitReduction = 1.0f - ((float)currentPidProfile->vbat_motor_output_scale) / 100.0f;
+
+    vbatSagCompensationFactor = 0.0f;
+    if (currentPidProfile->vbat_sag_compensation > 0) {
+        vbatSagCompensationFactor = ((float)currentPidProfile->vbat_sag_compensation) / 100.0f;
     }
 }
 
@@ -490,7 +491,7 @@ static void calculateThrottleAndCurrentMotorEndpoints(timeUs_t currentTimeUs)
     static uint16_t rcThrottlePrevious = 0;   // Store the last throttle direction for deadband transitions
     static timeUs_t reversalTimeUs = 0; // time when motors last reversed in 3D mode
     static float motorRangeMinIncrease = 0;
-    static float motorRangeMaxDecrease = 0;
+    static float motorRangeAttenuationFactor = 0;
 #ifdef USE_DYN_IDLE
     static float oldMinRps;
 #endif
@@ -620,24 +621,26 @@ static void calculateThrottleAndCurrentMotorEndpoints(timeUs_t currentTimeUs)
 #endif
 
         // reduce motorRangeMax when battery is full
-        const float vbatLow = ((float)batteryConfig()->vbatwarningcellvoltage) / 100.0f;
-        const float vbatFull = ((float)batteryConfig()->vbatfullcellvoltage) / 100.0f;
-        const float vBatRange = vbatFull - vbatLow;
-        const float currentCellVoltage = ((float)getBatteryAverageCellVoltage()) / 100.0f; // convert from units of .01V
-        if (motorOutputLimitReduction < 1.0f) {
-            float vBatFactor;
-            // vBatFactor = 0 when voltage is >= vbatFull, and 1 when voltage is <= vbatLow
-            vBatFactor = (vbatFull - MAX(currentCellVoltage, vbatLow)) / vBatRange;
-            if (vBatFactor<0) vBatFactor = 0;
-            motorRangeMaxDecrease = (1.0f - vBatFactor) * motorOutputLimitReduction;
+        if (vbatSagCompensationFactor > 0.0f) {
+            const float vbatFull = batteryConfig()->vbatmaxcellvoltage - 10;
+            const float vbatLow = batteryConfig()->vbatwarningcellvoltage;
+            const float vbatRangeToCompensate = vbatFull - vbatLow;
+            const float currentCellVoltage = (float)getBatteryAverageCellVoltage();
+            float batteryGoodness = 0.0f;
+            // batteryGoodness = 1 when voltage is above vbatFull, and 0 when voltage is below vbatLow
+            if (vbatRangeToCompensate > 0.0f) {
+               batteryGoodness = 1.0f - constrainf((vbatFull - currentCellVoltage) / vbatRangeToCompensate, 0.0f, 1.0f);
+            }
+            motorRangeAttenuationFactor = (vbatRangeToCompensate / vbatFull) * batteryGoodness;
+            if (debugMode == DEBUG_BATTERY) {
+                debug[2] = lrintf(batteryGoodness * 100);
+                debug[3] = lrintf(motorRangeAttenuationFactor * 100);
+            }
         }
+
         currentThrottleInputRange = rcCommandThrottleRange;
         motorRangeMin = motorOutputLow + motorRangeMinIncrease * (motorOutputHigh - motorOutputLow);
-        motorRangeMax = motorOutputHigh - motorRangeMaxDecrease * (motorOutputHigh - motorOutputLow);
-        if (debugMode == DEBUG_BATTERY) {
-            debug[2] = lrintf(currentCellVoltage * 100);
-            debug[3] = lrintf(motorRangeMaxDecrease * 1000);
-        }
+        motorRangeMax = motorOutputHigh - motorRangeAttenuationFactor * (motorOutputHigh - motorOutputLow);
         motorOutputMin = motorRangeMin;
         motorOutputRange = motorRangeMax - motorOutputMin;
         motorOutputMixSign = 1;
