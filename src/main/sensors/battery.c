@@ -119,6 +119,7 @@ PG_RESET_TEMPLATE(batteryConfig_t, batteryConfig,
     .vbatfullcellvoltage = 410,
 
     .vbatLpfPeriod = 30,
+    .vbatSagLpfPeriod = 2, // default to 'fast' compensation, requires high freq battery updates
     .ibatLpfPeriod = 10,
     .vbatDurationForWarning = 0,
     .vbatDurationForCritical = 0,
@@ -518,6 +519,12 @@ uint8_t getBatteryCellCount(void)
 uint16_t getBatteryAverageCellVoltage(void)
 {
     return voltageMeter.filtered / batteryCellCount;
+}
+
+// return the alternate filtered value for use with motor output compensation
+float getMOCAverageCellVoltage(void)
+{
+    return (float)voltageMeter.compFiltered / (float)batteryCellCount;
 }
 
 bool isAmperageConfigured(void)

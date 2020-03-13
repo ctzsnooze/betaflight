@@ -625,7 +625,7 @@ static void calculateThrottleAndCurrentMotorEndpoints(timeUs_t currentTimeUs)
             const float vbatFull = batteryConfig()->vbatmaxcellvoltage - 10;
             const float vbatLow = batteryConfig()->vbatwarningcellvoltage;
             const float vbatRangeToCompensate = vbatFull - vbatLow;
-            const float currentCellVoltage = (float)getBatteryAverageCellVoltage();
+            const float currentCellVoltage = getMOCAverageCellVoltage();
             float batteryGoodness = 0.0f;
             // batteryGoodness = 1 when voltage is above vbatFull, and 0 when voltage is below vbatLow
             if (vbatRangeToCompensate > 0.0f) {
