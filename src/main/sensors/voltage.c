@@ -106,7 +106,9 @@ void voltageMeterReset(voltageMeter_t *meter)
 typedef struct voltageMeterADCState_s {
     uint16_t voltageFiltered;         // battery voltage in 0.01V steps (filtered)
     uint16_t voltageUnfiltered;       // battery voltage in 0.01V steps (unfiltered)
+    uint16_t voltageSagFiltered;      // battery voltage in 0.01V steps (filtered for vbat sag compensation)
     pt1Filter_t filter;
+    pt1Filter_t sagFilter;            // filter for vbat sag compensation
 } voltageMeterADCState_t;
 
 extern voltageMeterADCState_t voltageMeterADCStates[MAX_VOLTAGE_SENSOR_ADC];
@@ -163,17 +165,19 @@ void voltageMeterADCRefresh(void)
 
         uint8_t channel = voltageMeterAdcChannelMap[i];
         uint16_t rawSample = adcGetChannel(channel);
-
         uint16_t filteredSample = pt1FilterApply(&state->filter, rawSample);
+        uint16_t filteredSagSample = pt1FilterApply(&state->sagFilter, rawSample);
 
         // always calculate the latest voltage, see getLatestVoltage() which does the calculation on demand.
         state->voltageFiltered = voltageAdcToVoltage(filteredSample, config);
         state->voltageUnfiltered = voltageAdcToVoltage(rawSample, config);
+        state->voltageSagFiltered = voltageAdcToVoltage(filteredSagSample, config);
 #else
         UNUSED(voltageAdcToVoltage);
 
         state->voltageFiltered = 0;
         state->voltageUnfiltered = 0;
+        state->voltageSagFiltered = 0;
 #endif
     }
 }
@@ -184,6 +188,7 @@ void voltageMeterADCRead(voltageSensorADC_e adcChannel, voltageMeter_t *voltageM
 
     voltageMeter->filtered = state->voltageFiltered;
     voltageMeter->unfiltered = state->voltageUnfiltered;
+    voltageMeter->sagFiltered = state->voltageSagFiltered;
 }
 
 void voltageMeterADCInit(void)
@@ -194,7 +199,8 @@ void voltageMeterADCInit(void)
         voltageMeterADCState_t *state = &voltageMeterADCStates[i];
         memset(state, 0, sizeof(voltageMeterADCState_t));
 
-        pt1FilterInit(&state->filter, pt1FilterGain(GET_BATTERY_LPF_FREQUENCY(batteryConfig()->vbatLpfPeriod), HZ_TO_INTERVAL(50)));
+        pt1FilterInit(&state->filter, pt1FilterGain(GET_BATTERY_LPF_FREQUENCY(batteryConfig()->vbatLpfPeriod), HZ_TO_INTERVAL(200)));
+        pt1FilterInit(&state->sagFilter, pt1FilterGain(GET_BATTERY_LPF_FREQUENCY(batteryConfig()->vbatSagLpfPeriod), HZ_TO_INTERVAL(200)));
     }
 }
 
@@ -206,7 +212,9 @@ void voltageMeterADCInit(void)
 typedef struct voltageMeterESCState_s {
     uint16_t voltageFiltered;         // battery voltage in 0.01V steps (filtered)
     uint16_t voltageUnfiltered;       // battery voltage in 0.01V steps (unfiltered)
+    uint16_t voltageSagFiltered;      // battery voltage in 0.01V steps (filtered for vbat sag compensation)
     pt1Filter_t filter;
+    pt1Filter_t sagFilter;
 } voltageMeterESCState_t;
 
 static voltageMeterESCState_t voltageMeterESCState;
@@ -218,7 +226,8 @@ void voltageMeterESCInit(void)
 {
 #ifdef USE_ESC_SENSOR
     memset(&voltageMeterESCState, 0, sizeof(voltageMeterESCState_t));
-    pt1FilterInit(&voltageMeterESCState.filter, pt1FilterGain(GET_BATTERY_LPF_FREQUENCY(batteryConfig()->vbatLpfPeriod), HZ_TO_INTERVAL(50)));
+    pt1FilterInit(&voltageMeterESCState.filter, pt1FilterGain(GET_BATTERY_LPF_FREQUENCY(batteryConfig()->vbatLpfPeriod), HZ_TO_INTERVAL(200)));
+    pt1FilterInit(&voltageMeterESCState.sagFilter, pt1FilterGain(GET_BATTERY_LPF_FREQUENCY(batteryConfig()->vbatSagLpfPeriod), HZ_TO_INTERVAL(200)));
 #endif
 }
 
@@ -229,6 +238,7 @@ void voltageMeterESCRefresh(void)
     if (escData) {
         voltageMeterESCState.voltageUnfiltered = escData->dataAge <= ESC_BATTERY_AGE_MAX ? escData->voltage : 0;
         voltageMeterESCState.voltageFiltered = pt1FilterApply(&voltageMeterESCState.filter, voltageMeterESCState.voltageUnfiltered);
+        voltageMeterESCState.voltageSagFiltered = pt1FilterApply(&voltageMeterESCState.sagFilter, voltageMeterESCState.voltageUnfiltered);
     }
 #endif
 }
@@ -243,6 +253,7 @@ void voltageMeterESCReadMotor(uint8_t motorNumber, voltageMeter_t *voltageMeter)
     if (escData) {
         voltageMeter->unfiltered = escData->dataAge <= ESC_BATTERY_AGE_MAX ? escData->voltage : 0;
         voltageMeter->filtered = voltageMeter->unfiltered; // no filtering for ESC motors currently.
+        voltageMeter->sagFiltered = voltageMeter->unfiltered; // no filtering for ESC motors currently. TODO why is this?
     } else {
         voltageMeterReset(voltageMeter);
     }
@@ -257,6 +268,7 @@ void voltageMeterESCReadCombined(voltageMeter_t *voltageMeter)
 #else
     voltageMeter->filtered = voltageMeterESCState.voltageFiltered;
     voltageMeter->unfiltered = voltageMeterESCState.voltageUnfiltered;
+    voltageMeter->sagFiltered = voltageMeterESCState.voltageSagFiltered;
 #endif
 }
 

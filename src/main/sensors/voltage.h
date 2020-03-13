@@ -40,6 +40,7 @@ extern const char * const voltageMeterSourceNames[VOLTAGE_METER_COUNT];
 typedef struct voltageMeter_s {
     uint16_t filtered;                      // voltage in 0.01V steps
     uint16_t unfiltered;                    // voltage in 0.01V steps
+    uint16_t sagFiltered;                   // voltage in 0.01V steps
     bool lowVoltageCutoff;
 } voltageMeter_t;
 
