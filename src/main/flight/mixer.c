@@ -297,6 +297,8 @@ static FAST_RAM_ZERO_INIT float idleMinMotorRps;
 static FAST_RAM_ZERO_INIT float idleP;
 #endif
 static FAST_RAM_ZERO_INIT float vbatSagCompensationFactor;
+static FAST_RAM_ZERO_INIT float vbatFull;
+static FAST_RAM_ZERO_INIT float vbatRangeToCompensate;
 
 uint8_t getMotorCount(void)
 {
@@ -366,7 +368,11 @@ void mixerInit(mixerMode_e mixerMode)
 
     vbatSagCompensationFactor = 0.0f;
     if (currentPidProfile->vbat_sag_compensation > 0) {
-        vbatSagCompensationFactor = ((float)currentPidProfile->vbat_sag_compensation) / 100.0f;
+        vbatFull = batteryConfig()->vbatmaxcellvoltage - 10;
+        vbatRangeToCompensate = vbatFull - batteryConfig()->vbatwarningcellvoltage;
+        if (vbatRangeToCompensate >= 0) {
+            vbatSagCompensationFactor = ((float)currentPidProfile->vbat_sag_compensation) / 100.0f;
+        }
     }
 }
 
@@ -622,20 +628,12 @@ static void calculateThrottleAndCurrentMotorEndpoints(timeUs_t currentTimeUs)
 
         // reduce motorRangeMax when battery is full
         if (vbatSagCompensationFactor > 0.0f) {
-            const float vbatFull = batteryConfig()->vbatmaxcellvoltage - 10;
-            const float vbatLow = batteryConfig()->vbatwarningcellvoltage;
-            const float vbatRangeToCompensate = vbatFull - vbatLow;
             const float currentCellVoltage = (float)getBatterySagCellVoltage();
-            float batteryGoodness = 0.0f;
             // batteryGoodness = 1 when voltage is above vbatFull, and 0 when voltage is below vbatLow
-            if (vbatRangeToCompensate > 0.0f) {
-               batteryGoodness = 1.0f - constrainf((vbatFull - currentCellVoltage) / vbatRangeToCompensate, 0.0f, 1.0f);
-            }
+            float batteryGoodness = 1.0f - constrainf((vbatFull - currentCellVoltage) / vbatRangeToCompensate, 0.0f, 1.0f);
             motorRangeAttenuationFactor = (vbatRangeToCompensate / vbatFull) * batteryGoodness * vbatSagCompensationFactor;
-            if (debugMode == DEBUG_BATTERY) {
-                debug[2] = lrintf(batteryGoodness * 100);
-                debug[3] = lrintf(motorRangeAttenuationFactor * 1000);
-            }
+            DEBUG_SET(DEBUG_BATTERY, 2, batteryGoodness * 100);
+            DEBUG_SET(DEBUG_BATTERY, 3, motorRangeAttenuationFactor * 1000);
         }
 
         currentThrottleInputRange = rcCommandThrottleRange;
