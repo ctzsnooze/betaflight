@@ -627,7 +627,7 @@ static void calculateThrottleAndCurrentMotorEndpoints(timeUs_t currentTimeUs)
 #endif
 
         // reduce motorRangeMax when battery is full
-        if (vbatSagCompensationFactor > 0.0f) {
+        if (systemConfig()->vbatSagCompEnabled) {
             const float currentCellVoltage = (float)getBatterySagCellVoltage();
             // batteryGoodness = 1 when voltage is above vbatFull, and 0 when voltage is below vbatLow
             float batteryGoodness = 1.0f - constrainf((vbatFull - currentCellVoltage) / vbatRangeToCompensate, 0.0f, 1.0f);

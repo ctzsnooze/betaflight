@@ -21,3 +21,6 @@
 #pragma once
 
 void tasksInit(void);
+
+#define FAST_VBAT_FREQ 200
+#define SLOW_VBAT_FREQ 50
