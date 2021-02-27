@@ -54,11 +54,16 @@
 #include "flight/rpm_filter.h"
 
 #include "pg/rx.h"
+#include "io/gps.h"
 
 #include "rx/rx.h"
 
+
 #include "sensors/battery.h"
 #include "sensors/gyro.h"
+
+#include "sensors/barometer.h"
+#include "flight/position.h"
 
 #include "mixer.h"
 
@@ -69,6 +74,8 @@ static FAST_DATA_ZERO_INIT float motorMixRange;
 
 float FAST_DATA_ZERO_INIT motor[MAX_SUPPORTED_MOTORS];
 float motor_disarmed[MAX_SUPPORTED_MOTORS];
+
+static uint8_t altiLimStatus = 0;
 
 static FAST_DATA_ZERO_INIT int throttleAngleCorrection;
 
@@ -484,6 +491,7 @@ FAST_CODE_NOINLINE void mixTable(timeUs_t currentTimeUs)
     const bool launchControlActive = isLaunchControlActive();
 
     motorMixer_t * activeMixer = &mixerRuntime.currentMixer[0];
+
 #ifdef USE_LAUNCH_CONTROL
     if (launchControlActive && (currentPidProfile->launchControlMode == LAUNCH_CONTROL_MODE_PITCHONLY)) {
         activeMixer = &mixerRuntime.launchControlMixer[0];
@@ -533,8 +541,26 @@ FAST_CODE_NOINLINE void mixTable(timeUs_t currentTimeUs)
     }
 #endif
 
-    // send throttle value to blackbox, including scaling and throttle boost, but not TL compensation, dyn idle or airmode 
+    // send throttle value to blackbox, including scaling and throttle boost, but not TL compensation, dyn idle or airmode
     mixerThrottle = throttle;
+
+#ifdef USE_BARO
+    if ( (gpsIsHealthy() && gpsSol.numSat > 7) || isBaroReady() ) {
+         if (getEstimatedAltitudeCm() > (mixerConfig()->alti_cutoff*100)){
+             throttle = 0.0f;
+             altiLimStatus = 1;
+         } else if(getEstimatedAltitudeCm() > (mixerConfig()->alti_start_lim*100)){
+             float limitingRatio = 0.4f * ((mixerConfig()->alti_cutoff*100) - getEstimatedAltitudeCm()) / ((mixerConfig()->alti_cutoff*100) - (mixerConfig()->alti_start_lim*100));
+             limitingRatio = constrainf(limitingRatio, 0.0f, 1.0f);
+             throttle = constrainf(limitingRatio, 0.0f, throttle);
+             altiLimStatus = 1;
+         } else {
+             altiLimStatus = 0;
+         }
+     } else {
+         altiLimStatus = 2;
+     }
+#endif
 
 #ifdef USE_DYN_IDLE
     // Apply digital idle throttle offset when stick is at zero after all other adjustments are complete
@@ -623,4 +649,9 @@ void mixerSetThrottleAngleCorrection(int correctionValue)
 float mixerGetThrottle(void)
 {
     return mixerThrottle;
+}
+
+uint8_t getThrottleLimitationStatus(void)
+{
+    return altiLimStatus;
 }

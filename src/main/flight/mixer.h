@@ -89,6 +89,8 @@ typedef struct mixerConfig_s {
     bool yaw_motors_reversed;
     uint8_t crashflip_motor_percent;
     uint8_t crashflip_expo;
+    uint16_t alti_cutoff;
+    uint16_t alti_start_lim;
     uint8_t mixer_type;
 } mixerConfig_t;
 
@@ -119,6 +121,9 @@ bool mixerIsTricopter(void);
 
 void mixerSetThrottleAngleCorrection(int correctionValue);
 float mixerGetThrottle(void);
+
+uint8_t getThrottleLimitationStatus(void);
+
 mixerMode_e getMixerMode(void);
 bool mixerModeIsFixedWing(mixerMode_e mixerMode);
 bool isFixedWing(void);
