@@ -42,11 +42,11 @@ typedef struct laggedMovingAverageCombined_s {
 
 laggedMovingAverageCombined_t  setpointDeltaAvg[XYZ_AXIS_COUNT];
 
-static float prevSetpoint[XYZ_AXIS_COUNT]; // equals raw unless interpolated 
-static float prevSetpointSpeed[XYZ_AXIS_COUNT]; // equals raw unless interpolated
-static float prevAcceleration[XYZ_AXIS_COUNT]; // for accurate duplicate interpolation
-static float prevRcCommandDelta[XYZ_AXIS_COUNT]; // for accurate duplicate interpolation
-static bool prevDuplicatePacket[XYZ_AXIS_COUNT]; // to identify multiple identical packets
+static float prevSetpoint[XYZ_AXIS_COUNT];
+static float prevSetpointSpeed[XYZ_AXIS_COUNT];
+static float prevAcceleration[XYZ_AXIS_COUNT];
+static float prevRcCommandDelta[XYZ_AXIS_COUNT];
+static bool prevDuplicatePacket[XYZ_AXIS_COUNT];
 static uint8_t averagingCount;
 static float feedforwardMaxRateLimit[XYZ_AXIS_COUNT];
 static float feedforwardMaxRate[XYZ_AXIS_COUNT];
@@ -76,6 +76,9 @@ FAST_CODE_NOINLINE float feedforwardApply(int axis, bool newRcFrame, feedforward
         float feedforward;
 
         // calculate an attenuator from average of two most recent rcCommand deltas vs jitter threshold
+        if (axis == FD_ROLL) {
+            DEBUG_SET(DEBUG_FEEDFORWARD, 3, lrintf(rcCommandDelta * 100.0f)); // rcCommand packet difference = steps of 50 mean 2000 RC steps
+        }
         rcCommandDelta = fabsf(rcCommandDelta);
         float boostAttenuator = 1.0f;
         if (feedforwardJitterFactor) {
@@ -88,9 +91,6 @@ FAST_CODE_NOINLINE float feedforwardApply(int axis, bool newRcFrame, feedforward
         const float setpointPercent = fabsf(setpoint) / feedforwardMaxRate[axis];
         float absSetpointSpeed = fabsf(setpointSpeed); // unsmoothed for kick prevention
 
-        if (axis == FD_ROLL) {
-            DEBUG_SET(DEBUG_FEEDFORWARD, 3, lrintf(rcCommandDelta * 100.0f)); // rcCommand packet difference = steps of 50 mean 2000 RC steps
-        }
         // interpolate setpoint if necessary
         if (rcCommandDelta == 0.0f) {
             if (prevDuplicatePacket[axis] == false) {
@@ -182,10 +182,12 @@ FAST_CODE_NOINLINE float applyFeedforwardLimit(int axis, float value, float Kp, 
         break;
     }
 
-    if (fabsf(currentPidSetpoint) <= feedforwardMaxRateLimit[axis]) {
-        value = constrainf(value, (-feedforwardMaxRateLimit[axis] - currentPidSetpoint) * Kp, (feedforwardMaxRateLimit[axis] - currentPidSetpoint) * Kp);
-    } else {
-        value = 0;
+    if (value * currentPidSetpoint > 0.0f) {
+        if (fabsf(currentPidSetpoint) <= feedforwardMaxRateLimit[axis]) {
+            value = constrainf(value, (-feedforwardMaxRateLimit[axis] - currentPidSetpoint) * Kp, (feedforwardMaxRateLimit[axis] - currentPidSetpoint) * Kp);
+        } else {
+            value = 0;
+        }
     }
 
     if (axis == FD_ROLL) {
