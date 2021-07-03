@@ -70,7 +70,7 @@ FAST_CODE_NOINLINE float feedforwardApply(int axis, bool newRcFrame, feedforward
         const float rxRate = 1.0f / rxInterval;
         float setpointSpeed = (setpoint - prevSetpoint[axis]) * rxRate;
         float absPrevSetpointSpeed = fabsf(prevSetpointSpeed[axis]);
-        float setpointAcceleration = 0.0f;
+        float setpointAcceleration = setpointSpeed - prevSetpointSpeed[axis];
         const float feedforwardSmoothFactor = pidGetFeedforwardSmoothFactor();
         const float feedforwardJitterFactor = pidGetFeedforwardJitterFactor();
         float feedforward;
@@ -80,11 +80,11 @@ FAST_CODE_NOINLINE float feedforwardApply(int axis, bool newRcFrame, feedforward
             DEBUG_SET(DEBUG_FEEDFORWARD, 3, lrintf(rcCommandDelta * 100.0f)); // rcCommand packet difference = steps of 50 mean 2000 RC steps
         }
         rcCommandDelta = fabsf(rcCommandDelta);
-        float boostAttenuator = 1.0f;
+        float jitterAttenuator = 1.0f;
         if (feedforwardJitterFactor) {
             if (rcCommandDelta < feedforwardJitterFactor) {
-                boostAttenuator = MAX(1.0f - ((rcCommandDelta + prevRcCommandDelta[axis]) / 2.0f) / feedforwardJitterFactor, 0.0f);
-                boostAttenuator = 1.0f - boostAttenuator * boostAttenuator;
+                jitterAttenuator = MAX(1.0f - ((rcCommandDelta + prevRcCommandDelta[axis]) / 2.0f) / feedforwardJitterFactor, 0.0f);
+                jitterAttenuator = 1.0f - jitterAttenuator * jitterAttenuator;
             }
         }
 
@@ -94,26 +94,24 @@ FAST_CODE_NOINLINE float feedforwardApply(int axis, bool newRcFrame, feedforward
         // interpolate setpoint if necessary
         if (rcCommandDelta == 0.0f) {
             if (prevDuplicatePacket[axis] == false) {
-                // first duplicate after movement
-                // don't interpolate if sticks close to centre or max
+                // first duplicate after movement, interpolate setpoint and use previous acceleration
+                // don't interpolate if sticks close to centre or max, interpolate jitter signals less than larger ones
                 if (setpointPercent > 0.02f && setpointPercent < 0.95f) {
-                    // simple setpoint interpolation
-                    setpoint = prevSetpoint[axis] + prevSetpointSpeed[axis] * rxInterval;
-                    // recalculate setpointSpeed and acceleration from this new setpoint value
+                    // setpoint interpolation includes previous acceleration and attenuation
+                    setpoint = prevSetpoint[axis] + (prevSetpointSpeed[axis] + prevAcceleration[axis] * jitterAttenuator ) * rxInterval * jitterAttenuator;
+                    // don't interpolate past max
+                    setpoint = fmin(setpoint, feedforwardMaxRate[axis]);
+                    // recalculate speed and acceleration
                     setpointSpeed = (setpoint - prevSetpoint[axis]) * rxRate;
-                    setpointAcceleration = prevAcceleration[axis];
+                    setpointAcceleration = (setpointSpeed - prevSetpointSpeed[axis]);
                 }
             } else {
                 // force to zero
-                boostAttenuator *= 0.0f;
+                setpointSpeed = 0.0f;
+                setpointAcceleration = 0.0f;
             }
             prevDuplicatePacket[axis] = true;
         } else {
-            // movement!
-            // zero boost for the first move after a duplicate or flat spot, but not when coming back from max
-            if (prevDuplicatePacket[axis] == true && setpointPercent < 0.95f) {
-                boostAttenuator *= 0.0f;
-            }
             prevDuplicatePacket[axis] = false;
         }
 
@@ -126,10 +124,6 @@ FAST_CODE_NOINLINE float feedforwardApply(int axis, bool newRcFrame, feedforward
         // first order type smoothing for derivative
         setpointSpeed = prevSetpointSpeed[axis] + feedforwardSmoothFactor * (setpointSpeed - prevSetpointSpeed[axis]);
 
-        if (setpointAcceleration == 0.0f) {
-            // use previous acceleration for duplicate to avoid sudden drop to zero
-            setpointAcceleration = setpointSpeed - prevSetpointSpeed[axis];
-        }
         // second order smoothing for for acceleration
         setpointAcceleration = prevAcceleration[axis] + feedforwardSmoothFactor * (setpointAcceleration - prevAcceleration[axis]);
 
@@ -146,7 +140,7 @@ FAST_CODE_NOINLINE float feedforwardApply(int axis, bool newRcFrame, feedforward
         if (feedforwardBoostFactor) {
             // allows boost when returning from max, but not when hitting max on the way up
             if (setpointPercent < 0.95f || absSetpointSpeed > 3.0f * absPrevSetpointSpeed) {
-                boostAmount = feedforwardBoostFactor * setpointAcceleration;
+                boostAmount = feedforwardBoostFactor * setpointAcceleration * jitterAttenuator;
             }
         }
 
@@ -158,7 +152,7 @@ FAST_CODE_NOINLINE float feedforwardApply(int axis, bool newRcFrame, feedforward
         }
 
         // add attenuated boost to base feedforward
-        feedforward += boostAmount * boostAttenuator;
+        feedforward += boostAmount;
 
         // apply averaging, if enabled
         if (feedforwardAveraging) {
@@ -174,11 +168,9 @@ FAST_CODE_NOINLINE float applyFeedforwardLimit(int axis, float value, float Kp, 
     switch (axis) {
     case FD_ROLL:
         DEBUG_SET(DEBUG_FEEDFORWARD_LIMIT, 0, value);
-
         break;
     case FD_PITCH:
         DEBUG_SET(DEBUG_FEEDFORWARD_LIMIT, 1, value);
-
         break;
     }
 
