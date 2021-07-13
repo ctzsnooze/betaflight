@@ -93,7 +93,7 @@ FAST_CODE_NOINLINE float feedforwardApply(int axis, bool newRcFrame, feedforward
 
         // interpolate setpoint if necessary
         if (rcCommandDelta == 0.0f) {
-            if (prevDuplicatePacket[axis] == false) {
+            if (getRxRateValid() && prevDuplicatePacket[axis] == false) {
                 // first duplicate after movement, interpolate setpoint and use previous acceleration
                 // don't interpolate if sticks close to centre or max, interpolate jitter signals less than larger ones
                 if (setpointPercent > 0.02f && setpointPercent < 0.95f) {
