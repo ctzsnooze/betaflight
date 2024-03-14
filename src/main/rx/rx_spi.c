@@ -205,18 +205,19 @@ STATIC_UNIT_TESTED bool rxSpiSetProtocol(rx_spi_protocol_e protocol)
  */
 static uint8_t rxSpiFrameStatus(rxRuntimeState_t *rxRuntimeState)
 {
-    UNUSED(rxRuntimeState);
-
     uint8_t status = RX_FRAME_PENDING;
 
     rx_spi_received_e result = protocolDataReceived(rxSpiPayload);
 
     if (result & RX_SPI_RECEIVED_DATA) {
         rxSpiNewPacketAvailable = true;
+        // use SPI EXTI time as frame time
+        // note that there is not rx time without EXTI
+        rxRuntimeState->lastRcFrameTimeUs = rxSpiGetLastExtiTimeUs();
         status = RX_FRAME_COMPLETE;
     }
 
-    if (result & RX_SPI_ROCESSING_REQUIRED) {
+    if (result & RX_SPI_PROCESSING_REQUIRED) {
         status |= RX_FRAME_PROCESSING_REQUIRED;
     }
 
@@ -235,10 +236,6 @@ static bool rxSpiProcessFrame(const rxRuntimeState_t *rxRuntimeState)
 
         if (result & RX_SPI_RECEIVED_DATA) {
             rxSpiNewPacketAvailable = true;
-        }
-
-        if (result & RX_SPI_ROCESSING_REQUIRED) {
-            return false;
         }
     }
 
@@ -264,8 +261,6 @@ bool rxSpiInit(const rxSpiConfig_t *rxSpiConfig, rxRuntimeState_t *rxRuntimeStat
 
     if (rxSpiExtiConfigured()) {
         rxSpiExtiInit(extiConfig.ioConfig, extiConfig.trigger);
-
-        rxRuntimeState->rcFrameTimeUsFn = rxSpiGetLastExtiTimeUs;
     }
 
     rxSpiNewPacketAvailable = false;
