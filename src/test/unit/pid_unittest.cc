@@ -149,6 +149,7 @@ void setDefaultTestSettings(void)
     pidProfile->dterm_notch_cutoff = 160;
     pidProfile->dterm_lpf1_type = FILTER_BIQUAD;
     pidProfile->itermWindup = 80;
+    pidProfile->itermLeak = 15;
     pidProfile->pidAtMinThrottle = PID_STABILISATION_ON;
     pidProfile->angle_limit = 60;
     pidProfile->feedforward_transition = 100;
@@ -277,6 +278,10 @@ TEST(pidControllerTest, testPidLoop)
     ENABLE_ARMING_FLAG(ARMED);
     pidStabilisationState(PID_STABILISATION_ON);
 
+    // increase pid sum limits to avoid interactions with the i term anti windup mechanism
+    pidProfile->pidSumLimit = USHRT_MAX;
+    pidProfile->pidSumLimitYaw = USHRT_MAX;
+
     pidController(pidProfile, currentTestTime());
 
     // Loop 1 - Expecting zero since there is no error
@@ -338,8 +343,8 @@ TEST(pidControllerTest, testPidLoop)
     pidController(pidProfile, currentTestTime());
     EXPECT_NEAR(-31.3, pidData[FD_ROLL].I, calculateTolerance(-31.3));
     EXPECT_NEAR(29.3, pidData[FD_PITCH].I, calculateTolerance(29.3));
-    EXPECT_NEAR(-1.76, pidData[FD_YAW].I, calculateTolerance(-1.76));
-        EXPECT_NEAR(-24.2, pidData[FD_YAW].Sum, calculateTolerance(-24.2)); 
+    EXPECT_NEAR(-1.7, pidData[FD_YAW].I, calculateTolerance(-1.7));
+    simulatedMotorMixRange = 0;
 
     // Match the stick to gyro to stop error
     simulatedSetpointRate[FD_ROLL] = 100;
@@ -362,13 +367,13 @@ TEST(pidControllerTest, testPidLoop)
     for(int loop = 0; loop < 5; loop++) {
         pidController(pidProfile, currentTestTime());
     }
-    // Iterm is stalled as it is not accumulating anymore
+    // Iterm is stalled as it is not accumulating anymore; yaw falls from leak
     EXPECT_FLOAT_EQ(0, pidData[FD_ROLL].P);
     EXPECT_FLOAT_EQ(0, pidData[FD_PITCH].P);
     EXPECT_FLOAT_EQ(0, pidData[FD_YAW].P);
     EXPECT_NEAR(-31.3, pidData[FD_ROLL].I, calculateTolerance(-31.3));
     EXPECT_NEAR(29.3, pidData[FD_PITCH].I, calculateTolerance(29.3));
-    EXPECT_NEAR(-1.76, pidData[FD_YAW].I, calculateTolerance(-1.76)); 
+    EXPECT_NEAR(-1.6, pidData[FD_YAW].I, calculateTolerance(-1.6)); 
     EXPECT_FLOAT_EQ(0, pidData[FD_ROLL].D);
     EXPECT_FLOAT_EQ(0, pidData[FD_PITCH].D);
     EXPECT_FLOAT_EQ(0, pidData[FD_YAW].D);

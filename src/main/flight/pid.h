@@ -287,10 +287,11 @@ typedef struct pidProfile_s {
     uint16_t tpa_gravity_thr0;              // For wings: gravity force addition to tpa argument in % when zero throttle
     uint16_t tpa_gravity_thr100;            // For wings: gravity force addition to tpa argument in % when full throttle
     uint8_t tpa_curve_type;                 // Classic type - for multirotor, hyperbolic - usually for wings
-    uint8_t tpa_curve_stall_throttle;        // For wings: speed at which PIDs should be maxed out (stall speed)
+    uint8_t tpa_curve_stall_throttle;       // For wings: speed at which PIDs should be maxed out (stall speed)
     uint16_t tpa_curve_pid_thr0;            // For wings: PIDs multiplier at stall speed
     uint16_t tpa_curve_pid_thr100;          // For wings: PIDs multiplier at full speed
     int8_t tpa_curve_expo;                  // For wings: how fast PIDs do transition as speed grows
+    uint8_t itermLeak;                      // rate at which iTerm leaks back towards zero on yaw
 } pidProfile_t;
 
 PG_DECLARE_ARRAY(pidProfile_t, PID_PROFILE_COUNT, pidProfiles);
@@ -371,6 +372,7 @@ typedef struct pidRuntime_s {
     float crashDtermThreshold;
     float crashSetpointThreshold;
     float crashLimitYaw;
+    float itermLeakRateYaw;
     float itermLimit;
     float itermLimitYaw;
     bool itermRotation;

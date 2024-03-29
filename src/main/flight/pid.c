@@ -246,6 +246,7 @@ void resetPidProfile(pidProfile_t *pidProfile)
         .tpa_curve_pid_thr0 = 200,
         .tpa_curve_pid_thr100 = 70,
         .tpa_curve_expo = 20,
+        .itermLeak = 15,
     );
 
 #ifndef USE_D_MIN
@@ -1139,6 +1140,7 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, timeUs_t currentTim
         // -----calculate I component
         float Ki = pidRuntime.pidCoefficient[axis].Ki;
         float itermLimit = pidRuntime.itermLimit; // windup fraction of pidSumLimit
+        float iTermLeak = 0.0f;
 
 #ifdef USE_LAUNCH_CONTROL
         // if launch control is active override the iterm gains and apply iterm windup protection to all axes
@@ -1149,13 +1151,14 @@ void FAST_CODE pidController(const pidProfile_t *pidProfile, timeUs_t currentTim
         {
             // yaw iTerm has it's own limit based on pidSumLimitYaw
             if (axis == FD_YAW) {
+                iTermLeak = pidData[axis].I * pidRuntime.itermLeakRateYaw;
                 itermLimit = pidRuntime.itermLimitYaw; // windup fraction of pidSumLimitYaw
                 // note that this is a stronger limit than previously
                 pidRuntime.itermAccelerator = 0.0f; // no antigravity on yaw iTerm
             }
         }
 
-        float iTermChange = (Ki + pidRuntime.itermAccelerator) * pidRuntime.dT * itermErrorRate;
+        float iTermChange = (Ki + pidRuntime.itermAccelerator) * pidRuntime.dT * itermErrorRate - iTermLeak;
 #ifdef USE_WING
         if (pidProfile->spa_mode[axis] != SPA_MODE_OFF) {
             // slowing down I-term change, or even making it zero if setpoint is high enough
