@@ -22,6 +22,7 @@ PG_SRC = \
             pg/msp.c \
             pg/pg.c \
             pg/piniobox.c \
+            pg/autopilot.c \
             pg/pinio.c \
             pg/pin_pull_up_down.c \
             pg/rcdevice.c \
