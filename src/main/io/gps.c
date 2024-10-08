@@ -2608,6 +2608,11 @@ void onGpsNewData(void)
 #ifdef USE_GPS_RESCUE
     gpsRescueNewGpsData();
 #endif
+
+#ifdef USE_POS_HOLD
+    posHoldNewGpsData();
+#endif
+
 #ifdef USE_GPS_LAP_TIMER
     gpsLapTimerNewGpsData();
 #endif // USE_GPS_LAP_TIMER
