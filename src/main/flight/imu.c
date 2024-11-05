@@ -606,7 +606,7 @@ static void imuCalculateEstimatedAttitude(timeUs_t currentTimeUs)
 #else
 
 #if defined(USE_GPS)
-static void isGpsHeadingUsable(float groundspeedGain, float imuCourseError, float dt)
+static void updateGpsHeadingUsable(float groundspeedGain, float imuCourseError, float dt)
 {
     if (!canUseGPSHeading) {
         static float gpsHeadingTruth = 0;
@@ -686,7 +686,7 @@ static void imuCalculateEstimatedAttitude(timeUs_t currentTimeUs)
             cogErr = imuCourseError * groundspeedGain;
             // cogErr is greater with larger heading errors and greater speed in straight pitch forward flight
 
-            isGpsHeadingUsable(groundspeedGain, imuCourseError, dt);
+            updateGpsHeadingUsable(groundspeedGain, imuCourseError, dt);
 
         } else if (gpsSol.groundSpeed > GPS_COG_MIN_GROUNDSPEED) {
             // Reset the reference and reinitialize quaternion factors when GPS groundspeed > GPS_COG_MIN_GROUNDSPEED
