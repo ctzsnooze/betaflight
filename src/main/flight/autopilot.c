@@ -346,9 +346,10 @@ void posControlOutput (void)
         DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 5, lrintf(autopilotAngle[AI_PITCH] * 10));
     }
 }
+
+static uint16_t previousGpsStamp = ~0;
 bool positionControl(void) 
 {
-    static uint16_t previousGpsStamp = ~0;
     if (currentGpsStamp() != previousGpsStamp) {
         previousGpsStamp = currentGpsStamp();
         posControlOnNewGPSData();
