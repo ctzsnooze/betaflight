@@ -2555,7 +2555,6 @@ void GPS_reset_home_position(void)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
-#define EARTH_ANGLE_TO_CM (111.3195f * 1000 * 100 / GPS_DEGREES_DIVIDER)  // latitude unit to cm at equator (111km/deg)
 // Get distance between two points in cm
 // Get bearing from pos1 to pos2, returns an 1deg = 100 precision
 void GPS_distance_cm_bearing(const gpsLocation_t *from, const gpsLocation_t* to, bool dist3d, uint32_t *pDist, int32_t *pBearing)
@@ -2617,10 +2616,6 @@ void onGpsNewData(void)
         GPS_calculateDistanceFlown(false);
     }
 
-#ifdef USE_GPS_RESCUE
-    gpsRescueNewGpsData();
-#endif
-
 #ifdef USE_GPS_LAP_TIMER
     gpsLapTimerNewGpsData();
 #endif // USE_GPS_LAP_TIMER
@@ -2644,6 +2639,11 @@ void gpsSetFixState(bool state)
 float getGpsDataIntervalSeconds(void)
 {
     return gpsDataIntervalSeconds;
+}
+
+float getGpsCosLat(void)
+{
+    return GPS_cosLat;
 }
 
 baudRate_e getGpsPortActualBaudRateIndex(void)
