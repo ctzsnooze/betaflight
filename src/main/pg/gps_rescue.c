@@ -29,7 +29,7 @@
 
 #include "gps_rescue.h"
 
-PG_REGISTER_WITH_RESET_TEMPLATE(gpsRescueConfig_t, gpsRescueConfig, PG_GPS_RESCUE, 7);
+PG_REGISTER_WITH_RESET_TEMPLATE(gpsRescueConfig_t, gpsRescueConfig, PG_GPS_RESCUE, 8);
 
 PG_RESET_TEMPLATE(gpsRescueConfig_t, gpsRescueConfig,
 
@@ -40,9 +40,6 @@ PG_RESET_TEMPLATE(gpsRescueConfig_t, gpsRescueConfig,
 
     .returnAltitudeM = 30,
     .groundSpeedCmS = 750,
-    .maxRescueAngle = 45,
-    .rollMix = 150,
-    .pitchCutoffHz = 75,
 
     .descentDistanceM = 20,
     .descendRate = 150,         // cm/s, minimum for descent and landing phase, or for descending if starting high ascent
@@ -52,13 +49,8 @@ PG_RESET_TEMPLATE(gpsRescueConfig_t, gpsRescueConfig,
     .sanityChecks = RESCUE_SANITY_FS_ONLY,
     .minSats = 8,
 
-    .velP = 8,
-    .velI = 40,
-    .velD = 12,
     .yawP = 20,
-
-    .useMag = GPS_RESCUE_USE_MAG,
-    .imuYawGain = 10
+    .useMag = GPS_RESCUE_USE_MAG
 );
 
 #endif // USE_GPS_RESCUE
