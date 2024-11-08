@@ -1182,7 +1182,7 @@ extern "C" {
        UNUSED(dist);
        UNUSED(bearing);
     }
-void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pEWDist, float *pNSDist)
+    void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pEWDist, float *pNSDist)
     {
        UNUSED(from);
        UNUSED(to);
@@ -1196,5 +1196,8 @@ void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pE
 
     bool canUseGPSHeading;
     bool compassIsHealthy;
-    uint16_t currentGpsStamp(void){ return 0; }
+    bool gpsHasNewData(uint16_t* gpsStamp) {
+        UNUSED(*gpsStamp);
+        return true;
+    }
 }

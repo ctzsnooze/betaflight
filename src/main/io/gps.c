@@ -93,7 +93,7 @@ GPS_svinfo_t GPS_svinfo[GPS_SV_MAXSATS_M8N];
 
 static serialPort_t *gpsPort;
 static float gpsDataIntervalSeconds;
-static uint16_t gpsStamp = ~0; // Initialize to an invalid state
+static uint16_t currentGpsStamp = 1;    // logical timer for received position update
 
 typedef struct gpsInitData_s {
     uint8_t index;
@@ -2608,7 +2608,7 @@ void onGpsNewData(void)
         return;
     }
 
-    gpsStamp ++; // increment the stamp
+    currentGpsStamp++;                 // new data version available
 
     gpsDataIntervalSeconds = gpsSol.navIntervalMs / 1000.0f;
 
@@ -2627,8 +2627,15 @@ void onGpsNewData(void)
 
 }
 
-uint16_t currentGpsStamp(void) {
-    return gpsStamp;
+// check if new data received since last check
+// stamp should be initialized to 0, gpsHasNewData will return tru on first call
+bool gpsHasNewData(uint16_t* stamp) {
+    if (*stamp != currentGpsStamp) {
+        *stamp = currentGpsStamp;
+        return true;
+    } else {
+        return false;
+    }
 }
 
 void gpsSetFixState(bool state)
