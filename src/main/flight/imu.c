@@ -386,8 +386,7 @@ static float imuCalcKpGain(timeUs_t currentTimeUs, bool useAcc, float *gyroAvera
 
 #ifdef USE_GPS
 
-// IMU groundspeed gain heuristic.
-// GPS_RESCUE_MODE overrides this
+// IMU groundspeed gain heuristic, not used while in GPS Rescue
 static float imuCalcGroundspeedGain(float dt)
 {
     // 1. suppress ez_ef at low groundspeed, and boost at high groundspeed, via
@@ -485,7 +484,7 @@ static void imuDebug_GPS_RESCUE_HEADING(void)
     // Encapsulate additional operations in a block so that it is only executed when the according debug mode is used
     // Only re-calculate magYaw when there is a new Mag data reading, to avoid spikes
     if (debugMode == DEBUG_GPS_RESCUE_HEADING && mag.isNewMagADCFlag) {
-        
+
         vector3_t mag_bf = mag.magADC;
         vector3_t mag_ef;
         matrixVectorMul(&mag_ef, &rMat, &mag_bf); // BF->EF true north
@@ -495,13 +494,13 @@ static void imuDebug_GPS_RESCUE_HEADING(void)
 
         vector3_t mag_ef_yawed;
         matrixVectorMul(&mag_ef_yawed, &rMatZTrans, &mag_ef); // EF->EF yawed
-        
+
         // Magnetic yaw is the angle between true north and the X axis of the body frame
         int16_t magYaw = lrintf((atan2_approx(mag_ef_yawed.y, mag_ef_yawed.x) * (1800.0f / M_PIf)));
         if (magYaw < 0) {
             magYaw += 3600;
         }
-        DEBUG_SET(DEBUG_GPS_RESCUE_HEADING, 4, magYaw); // mag heading in degrees * 10
+//        DEBUG_SET(DEBUG_GPS_RESCUE_HEADING, 4, magYaw); // mag heading in degrees * 10
         // reset new mag data flag to false to initiate monitoring for new Mag data.
         // note that if the debug doesn't run, this reset will not occur, and we won't waste cycles on the comparison
         mag.isNewMagADCFlag = false;
@@ -670,10 +669,11 @@ static void imuCalculateEstimatedAttitude(timeUs_t currentTimeUs)
         && STATE(GPS_FIX) && gpsSol.numSat > GPS_MIN_SAT_COUNT) {
         static bool gpsHeadingInitialized = false;  // TODO - remove
         if (gpsHeadingInitialized) {
-            float groundspeedGain;  // IMU yaw gain to be applied in imuMahonyAHRSupdate from ground course,
+            // IMU yaw gain to be applied in imuMahonyAHRSupdate is modified by likely association between heading of the aircraft and GPS ground course
+            float groundspeedGain;
             if (FLIGHT_MODE(GPS_RESCUE_MODE)) {
                 // GPS_Rescue adjusts groundspeedGain during a rescue in a range 0 - 4.5,
-                //   depending on GPS Rescue state and groundspeed relative to speed to home.
+                // depending on GPS Rescue state and groundspeed relative to speed to home
                 groundspeedGain = gpsRescueGetImuYawCogGain();
             } else {
                 // 0.0 - 10.0, heuristic based on GPS speed and stick state
