@@ -31,6 +31,7 @@
 #include "pg/gps.h"
 
 #define GPS_DEGREES_DIVIDER 10000000L
+#define EARTH_ANGLE_TO_CM (111.3195f * 1000 * 100 / GPS_DEGREES_DIVIDER)  // latitude unit to cm at equator (111km/deg)
 #define GPS_X 1
 #define GPS_Y 0
 #define GPS_MIN_SAT_COUNT 4      // number of sats to trigger low sat count sanity check
@@ -390,6 +391,7 @@ void GPS_reset_home_position(void);
 void GPS_calc_longitude_scaling(int32_t lat);
 void GPS_distance_cm_bearing(const gpsLocation_t *from, const gpsLocation_t *to, bool dist3d, uint32_t *dist, int32_t *bearing);
 void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pEWDist, float *pNSDist);
+float getGpsCosLat(void);
 
 void gpsSetFixState(bool state);
 float getGpsDataIntervalSeconds(void);      // sends GPS Nav Data interval to GPS Rescue

@@ -567,7 +567,7 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
 
 #ifdef USE_GPS_RESCUE
     if (FLIGHT_MODE(GPS_RESCUE_MODE)) {
-        angleTarget = gpsRescueAngle[axis] / 100.0f; // Angle is in centidegrees
+        angleTarget = autopilotAngle[axis]; // autopilotAngle in degrees
         angleFeedforward = 0.0f;
     }
 #endif
