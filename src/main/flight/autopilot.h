@@ -30,7 +30,9 @@ void resetPositionControl(gpsLocation_t initialTargetLocation);
 void setTargetLocation(gpsLocation_t newTargetLocation);
 
 void altitudeControl(float targetAltitudeCm, float taskIntervalS, float verticalVelocity, float targetAltitudeStep);
-bool positionControl();
+void (posControlOnNewGPSData) (void);
+void (posControlOutput) (void);
+bool positionControl(void);
 
 bool isBelowLandingAltitude(void);
 float getAutopilotThrottle(void);
