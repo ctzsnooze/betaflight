@@ -496,7 +496,10 @@ STATIC_UNIT_TESTED FAST_CODE_NOINLINE float pidLevel(int axis, const pidProfile_
     // use acro rates for the angle target in both horizon and angle modes, converted to -1 to +1 range using maxRate
 
 #ifdef USE_GPS_RESCUE
-    angleTarget += gpsRescueAngle[axis] / 100.0f; // Angle is in centidegrees, stepped on roll at 10Hz but not on pitch
+    if (FLIGHT_MODE(GPS_RESCUE_MODE)) {
+        angleTarget = gpsRescueAngle[axis] / 100.0f; // Angle is in centidegrees
+        angleFeedforward = 0.0f;
+    }
 #endif
 #ifdef USE_POS_HOLD_MODE
     if (FLIGHT_MODE(POS_HOLD_MODE)) {
