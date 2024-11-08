@@ -125,7 +125,6 @@ static float rescueThrottle;
 static float rescueYaw;
 float gpsRescueAngle[2] = { 0, 0 };
 bool magForceDisable = false;
-static bool newGPSData = false;
 static pt1Filter_t velocityDLpf;
 static pt3Filter_t velocityUpsampleLpf;
 
@@ -145,14 +144,6 @@ void gpsRescueInit(void)
     pt3FilterInit(&velocityUpsampleLpf, gain);
 }
 
-/*
- If we have new GPS data, update home heading if possible and applicable.
-*/
-void gpsRescueNewGpsData(void)
-{
-    newGPSData = true;
-}
-
 static void rescueStart(void)
 {
     rescueState.phase = RESCUE_INITIALIZE;
@@ -164,7 +155,7 @@ static void rescueStop(void)
 }
 
 // Things that need to run when GPS Rescue is enabled, and while armed, but while there is no Rescue in place
-static void setReturnAltitude(void)
+static void setReturnAltitude(const bool newGPSData)
 {
     // Hold maxAltitude at zero while disarmed, but if set_home_point_once is true, hold maxAlt until power cycled
     if (!ARMING_FLAG(ARMED) && !gpsConfig()->gps_set_home_point_once) {
@@ -200,7 +191,7 @@ static void setReturnAltitude(void)
     }
 }
 
-static void rescueAttainPosition(void)
+static void rescueAttainPosition(const bool newGPSData)
 {
     // runs at 100hz, but only updates RPYT settings when new GPS Data arrives and when not in idle phase.
     static float previousVelocityError = 0.0f;
@@ -488,7 +479,7 @@ static void performSanityChecks(void)
     DEBUG_SET(DEBUG_RTH, 3, (rescueState.intent.secondsFailing * 100 + secondsLowSats));
 }
 
-static void sensorUpdate(void)
+static void sensorUpdate(const bool newGPSData)
 {
     static float prevDistanceToHomeCm = 0.0f;
 
@@ -639,7 +630,7 @@ void disarmOnImpact(void)
     }
 }
 
-void descend(void)
+void descend(const bool newGPSData)
 {
     if (newGPSData) {
         // consider landing area to be a circle half landing height around home, to avoid overshooting home point
@@ -713,17 +704,19 @@ void initialiseRescueValues (void)
 void gpsRescueUpdate(void)
 // runs at gpsRescueTaskIntervalSeconds, and runs whether or not rescue is active
 {
+    static uint16_t gpsStamp = 0;
+    const bool newGPSData = gpsHasNewData(&gpsStamp);
     if (!FLIGHT_MODE(GPS_RESCUE_MODE)) {
         rescueStop(); // sets phase to RESCUE_IDLE; does nothing else.  RESCUE_IDLE tasks still run.
     } else if (FLIGHT_MODE(GPS_RESCUE_MODE) && rescueState.phase == RESCUE_IDLE) {
         rescueStart(); // sets phase to rescue_initialise if we enter GPS Rescue mode while idle
-        rescueAttainPosition(); // Initialise basic parameters when a Rescue starts (can't initialise sensor data reliably)
+        rescueAttainPosition(newGPSData); // Initialise basic parameters when a Rescue starts (can't initialise sensor data reliably)
         performSanityChecks(); // Initialises sanity check values when a Rescue starts
     }
 
     // Will now be in RESCUE_INITIALIZE mode, if just entered Rescue while IDLE, otherwise stays IDLE
 
-    sensorUpdate(); // always get latest GPS and Altitude data, update ascend and descend rates
+    sensorUpdate(newGPSData); // always get latest GPS and Altitude data, update ascend and descend rates
 
     static bool returnAltitudeLow = true;
     static bool initialVelocityLow = true;
@@ -733,7 +726,7 @@ void gpsRescueUpdate(void)
     case RESCUE_IDLE:
         // in Idle phase = NOT in GPS Rescue
         // update the return altitude and descent distance values, to have valid settings immediately they are needed
-        setReturnAltitude();
+        setReturnAltitude(newGPSData);
         break;
         // sanity checks are bypassed in IDLE mode; instead, failure state is always initialised to HEALTHY
         // target altitude is always set to current altitude.
@@ -843,14 +836,14 @@ void gpsRescueUpdate(void)
             rescueState.phase = RESCUE_LANDING;
             rescueState.intent.secondsFailing = 0; // reset sanity timer for landing
         }
-        descend();
+        descend(newGPSData);
         break;
 
     case RESCUE_LANDING:
         // Reduce altitude target steadily until impact, then disarm.
         // control yaw angle and throttle and pitch, attenuate velocity, roll and pitch iTerm
         // increase velocity smoothing cutoff as we get closer to ground
-        descend();
+        descend(newGPSData);
         disarmOnImpact();
         break;
 
@@ -873,9 +866,7 @@ void gpsRescueUpdate(void)
     DEBUG_SET(DEBUG_RTH, 0, lrintf(rescueState.intent.maxAltitudeCm / 10.0f));
 
     performSanityChecks();
-    rescueAttainPosition();
-
-    newGPSData = false;
+    rescueAttainPosition(newGPSData);
 }
 
 float gpsRescueGetYawRate(void)
