@@ -2554,8 +2554,9 @@ void GPS_reset_home_position(void)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
-// Get distance between two points in cm
-// Get bearing from pos1 to pos2, returns an 1deg = 100 precision
+// Get distance between two points in cm using spherical to Cartesian transform
+// One one latitude unit, or one longitude unit at the equator, equals 1.113195 cm.
+// Get bearing from pos1 to pos2, returns values with 0.01 degree precision
 void GPS_distance_cm_bearing(const gpsLocation_t *from, const gpsLocation_t* to, bool dist3d, uint32_t *pDist, int32_t *pBearing)
 {
     float dLat = (to->lat - from->lat) * EARTH_ANGLE_TO_CM;
@@ -2606,7 +2607,7 @@ void onGpsNewData(void)
         return;
     }
 
-    gpsStamp ++; // increment the stamp
+    gpsStamp++; // increment the stamp
 
     gpsDataIntervalSeconds = gpsSol.navIntervalMs / 1000.0f;
 
@@ -2621,7 +2622,7 @@ void onGpsNewData(void)
 
 }
 
-uint16_t currentGpsStamp(void) {
+uint16_t getGpsStamp(void) {
     return gpsStamp;
 }
 
