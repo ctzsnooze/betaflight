@@ -50,7 +50,6 @@ PG_RESET_TEMPLATE(gpsRescueConfig_t, gpsRescueConfig,
     .minSats = 8,
 
     .yawP = 20,
-    .useMag = GPS_RESCUE_USE_MAG
 );
 
 #endif // USE_GPS_RESCUE

@@ -59,12 +59,15 @@ extern "C" {
     #include "scheduler/scheduler.h"
 
     #include "sensors/acceleration.h"
+    #include "sensors/compass.h"
     #include "sensors/gyro.h"
 
     #include "telemetry/telemetry.h"
 
     PG_REGISTER(accelerometerConfig_t, accelerometerConfig, PG_ACCELEROMETER_CONFIG, 0);
+    PG_REGISTER(autopilotConfig_t, autopilotConfig, PG_AUTOPILOT, 0);
     PG_REGISTER(blackboxConfig_t, blackboxConfig, PG_BLACKBOX_CONFIG, 0);
+    PG_REGISTER(compassConfig_t, compassConfig, PG_COMPASS_CONFIG, 0);
     PG_REGISTER(gyroConfig_t, gyroConfig, PG_GYRO_CONFIG, 0);
     PG_REGISTER(mixerConfig_t, mixerConfig, PG_MIXER_CONFIG, 0);
     PG_REGISTER(pidConfig_t, pidConfig, PG_PID_CONFIG, 0);
@@ -78,7 +81,6 @@ extern "C" {
     PG_REGISTER(gpsConfig_t, gpsConfig, PG_GPS_CONFIG, 0);
     PG_REGISTER(gpsRescueConfig_t, gpsRescueConfig, PG_GPS_RESCUE, 0);
     PG_REGISTER(positionConfig_t, positionConfig, PG_POSITION, 0);
-    PG_REGISTER(autopilotConfig_t, autopilotConfig, PG_AUTOPILOT, 0);
 
     float rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
     uint16_t averageSystemLoadPercent = 0;
@@ -88,13 +90,17 @@ extern "C" {
     pidProfile_t *currentPidProfile;
     controlRateConfig_t *currentControlRateProfile;
     attitudeEulerAngles_t attitude;
+
     gpsSolutionData_t gpsSol;
+    uint16_t GPS_distanceToHome;
+    gpsLocation_t GPS_home_llh;
+    uint32_t GPS_distanceToHomeCm = 0;
+    int16_t GPS_directionToHome = 0;
+
     uint32_t targetPidLooptime;
     bool cmsInMenu = false;
     float axisPID_P[3], axisPID_I[3], axisPID_D[3], axisPIDSum[3];
     rxRuntimeState_t rxRuntimeState = {};
-    uint32_t GPS_distanceToHomeCm = 0;
-    int16_t GPS_directionToHome = 0;
     acc_t acc = {};
     bool mockIsUpright = false;
     uint8_t activePidLoopDenom = 1;
@@ -1189,12 +1195,13 @@ void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pE
        UNUSED(pEWDist);
        UNUSED(pNSDist);
     }
+
     float vector2Norm(const vector2_t *v) {
        UNUSED(*v);
        return 0.0f;
     }
 
     bool canUseGPSHeading;
-    bool compassIsHealthy;
     uint16_t getGpsStamp(void){ return 0; }
+    float getGpsCosLat(void) { return 1.0f; }
 }

@@ -112,7 +112,7 @@ typedef struct {
 
 static const float taskIntervalSeconds = HZ_TO_INTERVAL(TASK_GPS_RESCUE_RATE_HZ); // i.e. 0.01 s
 static float rescueYaw;
-bool magForceDisable = false;
+static bool disableMag = false;
 
 rescueState_s rescueState;
 
@@ -357,9 +357,9 @@ static void performSanityChecks(void)
         if (rescueState.intent.secondsFailing >= 30) {
 #ifdef USE_MAG
             //If there is a mag and has not been disabled, try again without the mag
-if (sensors(SENSOR_MAG) && gpsRescueConfig()->useMag && !magForceDisable) {
+            if (sensors(SENSOR_MAG) && compassConfig()->use_mag && !disableMag) {
                 //Try again with mag disabled
-                magForceDisable = true;
+                disableMag = true;
                 rescueState.intent.secondsFailing = 0;
             } else
 #endif
@@ -633,6 +633,7 @@ void initialiseRescueValues (void)
     rescueState.intent.targetVelocityCmS = 0.0f; // might as well stop the quad immediately
     rescueState.intent.verticalVelocityMultiplier = 1.0f;
     rescueState.intent.targetAltitudeStepCm = 0.0f;
+    disableMag = false; // re-enable Mag on next rescue start even if it failed on a previous rescue
 }
 
 void gpsRescueUpdate(void)
@@ -815,7 +816,7 @@ bool gpsRescueDisableMag(void)
 {
     // Enable mag on user request, but don't use it during fly home or if force disabled 
     // Note that while flying home the course over ground from GPS provides a heading that is less affected by wind
-    return !(gpsRescueConfig()->useMag && rescueState.phase != RESCUE_FLY_HOME && !magForceDisable);
+    return disableMag;
 }
 #endif
 #endif

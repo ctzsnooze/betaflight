@@ -85,7 +85,7 @@ bool posHoldStatusChecks(void)
     }
     if (
 #ifdef USE_MAG
-        !compassIsHealthy() &&
+        !compassEnabledAndCalibrated() &&
 #endif
         (!posHoldConfig()->pos_hold_without_mag || !canUseGPSHeading)) {
         posHold.posHoldIsOK = false;

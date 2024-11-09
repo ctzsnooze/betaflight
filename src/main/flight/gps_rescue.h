@@ -25,12 +25,6 @@
 
 #define TASK_GPS_RESCUE_RATE_HZ 100  // in sync with altitude task rate
 
-#ifdef USE_MAG
-#define GPS_RESCUE_USE_MAG  true
-#else
-#define GPS_RESCUE_USE_MAG  false
-#endif
-
 typedef enum {
     RESCUE_SANITY_OFF = 0,
     RESCUE_SANITY_ON,
