@@ -126,8 +126,8 @@ static bool newGPSData = false;
 static uint16_t previousGpsStamp = ~0;
 static void gpsRescueNewGpsData(void)
 {
-    if (currentGpsStamp() != previousGpsStamp) {
-        previousGpsStamp = currentGpsStamp();
+    if (getGpsStamp() != previousGpsStamp) {
+        previousGpsStamp = getGpsStamp();
         newGPSData = true;
     }
 } 

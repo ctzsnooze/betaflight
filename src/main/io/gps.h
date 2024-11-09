@@ -396,6 +396,6 @@ float getGpsCosLat(void);
 
 void gpsSetFixState(bool state);
 float getGpsDataIntervalSeconds(void);      // sends GPS Nav Data interval to GPS Rescue
-uint16_t currentGpsStamp(void);
+uint16_t getGpsStamp(void);
 
 baudRate_e getGpsPortActualBaudRateIndex(void);

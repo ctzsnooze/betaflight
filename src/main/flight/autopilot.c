@@ -43,7 +43,7 @@
 #define POSITION_I_SCALE  0.0001f
 #define POSITION_D_SCALE  0.0015f
 #define POSITION_A_SCALE  0.0008f
-#define UPSAMPLING_CUTOFF 5.0f
+#define UPSAMPLING_CUTOFF_HZ 5.0f
 
 static pidCoefficient_t altitudePidCoeffs;
 static pidCoefficient_t positionPidCoeffs;
@@ -135,7 +135,7 @@ void autopilotInit(const autopilotConfig_t *config)
     positionPidCoeffs.Kd = config->position_D * POSITION_D_SCALE;
     positionPidCoeffs.Kf = config->position_A * POSITION_A_SCALE; // Kf used for acceleration
     // initialise filters with approximate filter gain
-    float upsampleCutoff = pt3FilterGain(UPSAMPLING_CUTOFF, 0.01f); // 5Hz, assuming 100Hz task rate
+    float upsampleCutoff = pt3FilterGain(UPSAMPLING_CUTOFF_HZ, 0.01f); // 5Hz, assuming 100Hz task rate
     pt3FilterInit(&posHold.upsample[AI_ROLL], upsampleCutoff);
     pt3FilterInit(&posHold.upsample[AI_PITCH], upsampleCutoff);
     // Initialise PT1 filters for earth frame axes NS and EW
@@ -293,7 +293,6 @@ void (posControlOnNewGPSData) (void)
         // ** PID Sum **
         efAxis->pidSum = pidP + pidI + pidDA;
 
-        // Debugs... distances in cm, angles in degrees * 10, velocities cm/2
         if (gyroConfig()->gyro_filter_debug_axis == loopAxis) {
             DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 0, lrintf(posHold.distanceCm));
             DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 4, lrintf(pidP * 10));
@@ -335,10 +334,10 @@ void posControlOutput (void)
     // note: upsampling should really be done in earth frame, to avoid 10Hz wobbles if pilot yaws and the controller is applying significant pitch or roll
 
     if (gyroConfig()->gyro_filter_debug_axis == FD_ROLL) {
-        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 1, lrintf(posHold.efAxis[EW].distance));
-        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 2, lrintf(posHold.efAxis[EW].pidSum * 10));
-        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 3, lrintf(autopilotAngle[AI_ROLL] * 10));
-        DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 5, lrintf(autopilotAngle[AI_ROLL] * 10));
+        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 1, lrintf(posHold.efAxis[EW].distance));    // cm
+        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 2, lrintf(posHold.efAxis[EW].pidSum * 10)); // deg
+        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 3, lrintf(autopilotAngle[AI_ROLL] * 10));   // deg
+        DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 5, lrintf(autopilotAngle[AI_ROLL] * 10));  // deg
     } else {
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 1, lrintf(posHold.efAxis[NS].distance));
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 2, lrintf(posHold.efAxis[NS].pidSum * 10));
@@ -350,8 +349,8 @@ void posControlOutput (void)
 static uint16_t previousGpsStamp = ~0;
 bool positionControl(void) 
 {
-    if (currentGpsStamp() != previousGpsStamp) {
-        previousGpsStamp = currentGpsStamp();
+    if (getGpsStamp() != previousGpsStamp) {
+        previousGpsStamp = getGpsStamp();
         posControlOnNewGPSData();
     }
     posControlOutput();
