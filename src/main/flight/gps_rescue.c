@@ -112,7 +112,7 @@ typedef struct {
 
 static const float taskIntervalSeconds = HZ_TO_INTERVAL(TASK_GPS_RESCUE_RATE_HZ); // i.e. 0.01 s
 static float rescueYaw;
-bool magForceDisable = false;
+static bool disableMag = false;
 
 rescueState_s rescueState;
 
@@ -123,12 +123,14 @@ void gpsRescueInit(void)
 
 // check for new GPS Data
 static bool newGPSData = false;
-static uint16_t previousGpsStamp = ~0;
+static uint16_t previousGpsStamp = 0;
 static void gpsRescueNewGpsData(void)
 {
     if (getGpsStamp() != previousGpsStamp) {
         previousGpsStamp = getGpsStamp();
         newGPSData = true;
+    } else {
+        newGPSData = false;
     }
 } 
 
@@ -196,6 +198,7 @@ static void rescueAttainPosition(void)
         rescueState.intent.lonFactor = sin_approx(DEGREES_TO_RADIANS(DECIDEGREES_TO_DEGREES(GPS_directionToHome))) / (EARTH_ANGLE_TO_CM * getGpsCosLat());
         rescueState.sensor.imuYawCogGain = 1.0f;
         rescueState.sensor.previousLocation = gpsSol.llh;
+        rescueState.sensor.velocityToHomeCmS = 0.0f;
         return;
     case RESCUE_DO_NOTHING:
         // 20s of hover at current altitude, for switch induced sanity failures, to allow time to recover
@@ -357,9 +360,9 @@ static void performSanityChecks(void)
         if (rescueState.intent.secondsFailing >= 30) {
 #ifdef USE_MAG
             //If there is a mag and has not been disabled, try again without the mag
-if (sensors(SENSOR_MAG) && gpsRescueConfig()->useMag && !magForceDisable) {
+            if (sensors(SENSOR_MAG) && compassConfig()->use_mag && !disableMag) {
                 //Try again with mag disabled
-                magForceDisable = true;
+                disableMag = true;
                 rescueState.intent.secondsFailing = 0;
             } else
 #endif
@@ -423,7 +426,6 @@ if (sensors(SENSOR_MAG) && gpsRescueConfig()->useMag && !magForceDisable) {
 static void sensorUpdate(void)
 {
     rescueState.sensor.healthy = gpsIsHealthy();
-    gpsRescueNewGpsData(); // set newGPSData if there is new GPS data
     const float currentAltitudeCm = getAltitudeCm();
 
     const float bearingToHomeDeg = DECIDEGREES_TO_DEGREES(GPS_directionToHome); // 0 to 360
@@ -631,9 +633,10 @@ void initialiseRescueValues (void)
 {
     rescueState.intent.secondsFailing = 0; // reset the sanity check timer
     rescueState.intent.yawAttenuator = 0.0f; // no yaw in the climb
-    rescueState.intent.targetVelocityCmS = 0.0f; // might as well stop the quad immediately
+    rescueState.intent.targetVelocityCmS = 0.0f; // stop the quad immediately
     rescueState.intent.verticalVelocityMultiplier = 1.0f;
     rescueState.intent.targetAltitudeStepCm = 0.0f;
+    disableMag = false; // re-enable Mag on next rescue start even if it failed on a previous rescue
 }
 
 void gpsRescueUpdate(void)
@@ -649,6 +652,7 @@ void gpsRescueUpdate(void)
 
     // Will now be in RESCUE_INITIALIZE mode, if just entered Rescue while IDLE, otherwise stays IDLE
 
+    gpsRescueNewGpsData(); // if new GPS data, set newGPSData true
     sensorUpdate(); // always get latest GPS and Altitude data, update ascend and descend rates
 
     static bool returnAltitudeLow = true;
@@ -714,7 +718,7 @@ void gpsRescueUpdate(void)
 
         }
 
-        // stop the quad
+        // climb vertically
         rescueState.intent.targetVelocityCmS = 0.0f;
         break;
 
@@ -744,7 +748,6 @@ void gpsRescueUpdate(void)
         break;
 
     case RESCUE_DESCENT:
-        // attenuate velocity and altitude targets while updating the heading to home
         if (isBelowLandingAltitude()) {
             // enter landing mode once below landing altitude
             rescueState.phase = RESCUE_LANDING;
@@ -816,7 +819,7 @@ bool gpsRescueDisableMag(void)
 {
     // Enable mag on user request, but don't use it during fly home or if force disabled
     // Note that while flying home the course over ground from GPS provides a heading that is less affected by wind
-    return !(gpsRescueConfig()->useMag && rescueState.phase != RESCUE_FLY_HOME && !magForceDisable);
+    return disableMag;
 }
 #endif
 #endif

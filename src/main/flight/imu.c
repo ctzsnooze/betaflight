@@ -644,8 +644,7 @@ static void imuCalculateEstimatedAttitude(timeUs_t currentTimeUs)
     float magErr = 0;
 
 #ifdef USE_MAG
-    if (sensors(SENSOR_MAG)
-        && compassIsHealthy()
+    if (compassEnabledAndCalibrated()
 #ifdef USE_GPS_RESCUE
         && !gpsRescueDisableMag()
 #endif

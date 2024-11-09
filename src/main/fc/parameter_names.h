@@ -225,11 +225,6 @@
 #define PARAM_NAME_GPS_RESCUE_ALLOW_ARMING_WITHOUT_FIX "gps_rescue_allow_arming_without_fix"
 
 #define PARAM_NAME_GPS_RESCUE_YAW_P "gps_rescue_yaw_p"
-
-#ifdef USE_MAG
-#define PARAM_NAME_GPS_RESCUE_USE_MAG "gps_rescue_use_mag"
-#endif // USE_MAG
-
 #endif // USE_GPS_RESCUE
 
 #ifdef USE_GPS_LAP_TIMER
@@ -255,6 +250,8 @@
 #define PARAM_NAME_IMU_DCM_KI "imu_dcm_ki"
 #define PARAM_NAME_IMU_SMALL_ANGLE "small_angle"
 #define PARAM_NAME_IMU_PROCESS_DENOM "imu_process_denom"
+
 #ifdef USE_MAG
 #define PARAM_NAME_IMU_MAG_DECLINATION "mag_declination"
+#define PARAM_NAME_USE_MAG "use_mag"
 #endif

@@ -419,7 +419,7 @@ extern "C" {
     uint32_t millis(void) { return 0; }
     uint32_t micros(void) { return 0; }
 
-    bool compassIsHealthy(void) { return true; }
+    bool compassEnabledAndCalibrated(void) { return true; }
     bool baroIsCalibrated(void) { return true; }
     void performBaroCalibrationCycle(void) {}
     float baroCalculateAltitude(void) { return 0; }

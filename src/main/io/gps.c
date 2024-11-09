@@ -93,7 +93,7 @@ GPS_svinfo_t GPS_svinfo[GPS_SV_MAXSATS_M8N];
 
 static serialPort_t *gpsPort;
 static float gpsDataIntervalSeconds;
-static uint16_t gpsStamp = ~0; // Initialize to an invalid state
+static uint16_t gpsStamp = 1;
 
 typedef struct gpsInitData_s {
     uint8_t index;
