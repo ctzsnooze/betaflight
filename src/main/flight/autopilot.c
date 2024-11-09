@@ -52,7 +52,7 @@ static float altitudeI = 0.0f;
 static float throttleOut = 0.0f;
 
 typedef struct {
-    bool isStarting;
+    bool isSlowingDown;
     float distance;
     float previousDistance;
     float previousVelocity;
@@ -96,26 +96,6 @@ static posHoldState posHold = {
 
 static gpsLocation_t currentTargetLocation = {0, 0, 0};
 float autopilotAngle[2];
-
-void resetPositionControlEFParams(earthFrame_t *efAxis)
-{
-    // at start only
-    pt1FilterInit(&efAxis->velocityLpf, posHold.pt1Gain); // Clear and initialise the filters
-    pt1FilterInit(&efAxis->accelerationLpf, posHold.pt1Gain);
-    efAxis->isStarting = true; // Enter starting 'phase'
-    efAxis->integral = 0.0f;
-}
-
-void resetPositionControl(gpsLocation_t initialTargetLocation)
-{
-    // from pos_hold.c when initiating position hold at target location
-    currentTargetLocation = initialTargetLocation;
-    posHold.sticksActive = false;
-    // set sanity check distance according to groundspeed at start
-    posHold.sanityCheckDistance = gpsSol.groundSpeed > 500 ? gpsSol.groundSpeed * 2.0f : 1000.0f;
-    resetPositionControlEFParams(&posHold.efAxis[EW]);
-    resetPositionControlEFParams(&posHold.efAxis[NS]);
-}
 
 void initializeEfAxisFilters(earthFrame_t *efAxis, float filterGain) {
     pt1FilterInit(&efAxis->velocityLpf, filterGain);
@@ -194,17 +174,27 @@ void setSticksActiveStatus(bool areSticksActive)
     posHold.sticksActive = areSticksActive;
 }
 
-void setTargetLocation(gpsLocation_t newTargetLocation)
+void resetPositionControlEFParams(earthFrame_t *efAxis)
 {
-    currentTargetLocation = newTargetLocation;
-    posHold.efAxis[EW].previousDistance = 0.0f; // reset to avoid D and A spikess
-    posHold.efAxis[NS].previousDistance = 0.0f;
-    // function is intended for only small changes in position
-    // for example, where the step distance change reflects an intended velocity, determined by a client function
-    // if we had a 'target_ground_speed' value, like in gps_rescue, we can make a function that starts and stops smoothly and targets that velocity
+    // at start only
+    pt1FilterInit(&efAxis->velocityLpf, posHold.pt1Gain); // Clear and initialise the filters
+    pt1FilterInit(&efAxis->accelerationLpf, posHold.pt1Gain);
+    efAxis->integral = 0.0f;
+    efAxis->isSlowingDown = true; // Enter slowdown 'phase' with stronger D to stop quickly
 }
 
-void resetLocation(earthFrame_t *efAxis, axisEF_t loopAxis)
+void resetPositionControl(gpsLocation_t initialTargetLocation)
+{
+    // from pos_hold.c when initiating position hold at target location
+    currentTargetLocation = initialTargetLocation;
+    posHold.sticksActive = false;
+    // set sanity check distance according to groundspeed at start
+    posHold.sanityCheckDistance = gpsSol.groundSpeed > 500 ? gpsSol.groundSpeed * 2.0f : 1000.0f;
+    resetPositionControlEFParams(&posHold.efAxis[EW]);
+    resetPositionControlEFParams(&posHold.efAxis[NS]);
+}
+
+void resetTargetLocation(earthFrame_t *efAxis, axisEF_t loopAxis)
 {
     if (loopAxis == EW) {
         currentTargetLocation.lon = gpsSol.llh.lon; // update East-West / / longitude position
@@ -214,8 +204,19 @@ void resetLocation(earthFrame_t *efAxis, axisEF_t loopAxis)
     efAxis->previousDistance = 0.0f; // and reset the previous distance
 }
 
+void adjustTargetLocation(gpsLocation_t newTargetLocation)
+{
+    currentTargetLocation = newTargetLocation;
+    posHold.sticksActive = false;
+    posHold.efAxis[EW].isSlowingDown = false;
+    posHold.efAxis[NS].isSlowingDown = false;
+    // intended for only small changes in position, i.e. step changes per GPS data point
+    // in practice, the step distance change indicates an intended velocity
+}
+
 void (posControlOnNewGPSData) (void)
 {
+    // *** run this function only when new GPS data arrives ***
     posHold.gpsDataIntervalS = getGpsDataIntervalSeconds(); // interval for current GPS data value 0.01s to 1.0s
     posHold.gpsDataFreqHz = 1.0f / posHold.gpsDataIntervalS;
 
@@ -227,11 +228,11 @@ void (posControlOnNewGPSData) (void)
 
     posHold.distanceCm = vector2Norm(&gpsDistance);
 
-    const float leak = 1.0f - 0.4f * posHold.gpsDataIntervalS;
-    // leak iTerm while sticks are centered, 2s time constant approximately
+    const float leak = 1.0f - 0.4f * posHold.gpsDataIntervalS;  // while sticks are centered, 2s time constant approximately
+
     const float lpfGain = pt1FilterGain(posHold.lpfCutoff, posHold.gpsDataIntervalS);
 
-    static float prevPidDASquared = 0.0f; // if we limit DA on true vector length
+    static float prevPidDASquared = 0.0f; // to limit DA on true vector length
     const float maxDAAngle = 35.0f; // limit in degrees; arbitrary angle
 
     for (axisEF_t loopAxis = EW; loopAxis <= NS; loopAxis++) {
@@ -242,7 +243,7 @@ void (posControlOnNewGPSData) (void)
         const float pidP = efAxis->distance * positionPidCoeffs.Kp;
 
         // ** I **
-        efAxis->integral += efAxis->isStarting ? 0.0f : efAxis->distance * posHold.gpsDataIntervalS;
+        efAxis->integral += efAxis->isSlowingDown ? 0.0f : efAxis->distance * posHold.gpsDataIntervalS;
         // only add to iTerm while in hold phase
         const float pidI = efAxis->integral * positionPidCoeffs.Ki;
 
@@ -263,19 +264,19 @@ void (posControlOnNewGPSData) (void)
 
         if (posHold.sticksActive) {
             // sticks active 'phase'
-            efAxis->isStarting = true;
-            resetLocation(efAxis, loopAxis);
+            efAxis->isSlowingDown = true;
+            resetTargetLocation(efAxis, loopAxis);
             // while sticks are moving, reset the location on each axis, to maintain a usable D value
             // slowly leak iTerm away, approx 2s time constant
             efAxis->integral *= leak;
             // increase sanity check distance depending on speed, typically maximal when sticks stop
-        } else if (efAxis->isStarting) {
-            // 'phase' after sticks stop, but before craft has stopped
-            pidD *= 1.6f; // aribitrary D boost to stop more quickly when sticks are centered
+        } else if (efAxis->isSlowingDown) {
+            // 'phase' after sticks are centered, while aircraft is still moving
+            pidD *= 1.6f; // aribitrary D boost to stop more quickly
             if (velocity * velocityFiltered < 0.0f) {
-                // when an axis has nearly stopped moving, reset it and end it's start phase
-                resetLocation(efAxis, loopAxis);
-                efAxis->isStarting = false;
+                // when an axis has nearly stopped moving, reset location and end the 'starting' phase
+                resetTargetLocation(efAxis, loopAxis);
+                efAxis->isSlowingDown = false;
             }
         }
 

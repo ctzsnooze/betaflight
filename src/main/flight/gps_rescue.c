@@ -189,8 +189,9 @@ static void rescueAttainPosition(void)
         // initialise the positioning related settings
         rescueState.intent.disarmThreshold = gpsRescueConfig()->disarmThreshold * 0.1f;
         // initialise the required autopilot functions
-        resetAltitudeControl();
-        resetPositionControl(gpsSol.llh);
+        resetAltitudeControl(); // in autopilot.c
+        resetPositionControl(gpsSol.llh); // in autopilot.c, sets target to current location with fast slowing down
+        adjustTargetLocation(gpsSol.llh); // don't use fast slowing down at the start
         // pre-calculate the latitude and longitude adjustment factors
         rescueState.intent.latFactor = cos_approx(DEGREES_TO_RADIANS(DECIDEGREES_TO_DEGREES(GPS_directionToHome))) / EARTH_ANGLE_TO_CM ;
         rescueState.intent.lonFactor = sin_approx(DEGREES_TO_RADIANS(DECIDEGREES_TO_DEGREES(GPS_directionToHome))) / (EARTH_ANGLE_TO_CM * getGpsCosLat());
@@ -201,7 +202,6 @@ static void rescueAttainPosition(void)
     case RESCUE_DO_NOTHING:
         // 20s of hover at current altitude, for switch induced sanity failures, to allow time to recover
         // do nothing
-        setTargetLocation(gpsSol.llh);
         return;
      default:
         break;
@@ -253,7 +253,7 @@ static void rescueAttainPosition(void)
                 rescueState.intent.targetVelocityCmS = 0.0f;
                 arrivedHome = true;
                 // lock autopilot target at home location
-                setTargetLocation(GPS_home_llh);
+                adjustTargetLocation(GPS_home_llh);
             }
         } else if (distanceToMove > 0.0f) {
             // Calculate the required change in latitude and longitude based on the bearing
@@ -262,7 +262,7 @@ static void rescueAttainPosition(void)
             newLocation.lat = rescueState.sensor.previousLocation.lat + (int32_t)(distanceToMove * rescueState.intent.latFactor);
             newLocation.lon = rescueState.sensor.previousLocation.lon + (int32_t)(distanceToMove * rescueState.intent.lonFactor);
             rescueState.sensor.previousLocation = newLocation;
-            setTargetLocation(newLocation); // update the autopilot target location to the new location
+            adjustTargetLocation(newLocation); // update the autopilot target location to the new location
 
        }
         DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 1, lrintf(distanceToMove));
