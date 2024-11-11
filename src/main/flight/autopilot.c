@@ -22,6 +22,7 @@
 
 #include "platform.h"
 #include "build/debug.h"
+#include "common/axis.h"
 #include "common/filter.h"
 #include "common/maths.h"
 #include "common/vector.h"
@@ -43,7 +44,7 @@
 #define POSITION_I_SCALE  0.0001f
 #define POSITION_D_SCALE  0.0015f
 #define POSITION_A_SCALE  0.0008f
-#define UPSAMPLING_CUTOFF_HZ 5.0f
+#define UPSAMPLING_CUTOFF_HZ_HZ 5.0f
 
 static pidCoefficient_t altitudePidCoeffs;
 static pidCoefficient_t positionPidCoeffs;
@@ -71,14 +72,15 @@ typedef struct {
     float gpsDataIntervalS;
     float gpsDataFreqHz;
     float sanityCheckDistance;
+    float upsampleCutoff;
     float lpfCutoff;
     float pt1Gain;
     bool sticksActive;
     float maxAngle;
     float distanceCm;
-    float pidSumCraft[2];
-    pt3Filter_t upsample[2];
-    earthFrame_t efAxis[2];
+    float pidSumCraft[EF_AXIS_COUNT];
+    pt3Filter_t upsample[EF_AXIS_COUNT];
+    earthFrame_t efAxis[EF_AXIS_COUNT];
 } posHoldState;
 
 static posHoldState posHold = {
@@ -95,7 +97,7 @@ static posHoldState posHold = {
 };
 
 static gpsLocation_t currentTargetLocation = {0, 0, 0};
-float autopilotAngle[2];
+float autopilotAngle[RP_AXIS_COUNT];
 
 void resetPositionControlEFParams(earthFrame_t *efAxis)
 {
@@ -106,6 +108,12 @@ void resetPositionControlEFParams(earthFrame_t *efAxis)
     efAxis->integral = 0.0f;
 }
 
+void resetPt3UpsampleFilters(void)
+{
+    pt3FilterInit(&posHold.upsample[AI_ROLL], posHold.upsampleCutoff);
+    pt3FilterInit(&posHold.upsample[AI_PITCH], posHold.upsampleCutoff);
+}
+
 void resetPositionControl(gpsLocation_t initialTargetLocation)
 {
     // from pos_hold.c when initiating position hold at target location
@@ -113,8 +121,9 @@ void resetPositionControl(gpsLocation_t initialTargetLocation)
     posHold.sticksActive = false;
     // set sanity check distance according to groundspeed at start
     posHold.sanityCheckDistance = gpsSol.groundSpeed > 500 ? gpsSol.groundSpeed * 2.0f : 1000.0f;
-    resetPositionControlEFParams(&posHold.efAxis[EW]);
+    resetPositionControlEFParams(&posHold.efAxis[EW]); // includes reset of PT1 filters
     resetPositionControlEFParams(&posHold.efAxis[NS]);
+    resetPt3UpsampleFilters(); // clear anything from previous iteration
 }
 
 void initializeEfAxisFilters(earthFrame_t *efAxis, float filterGain) {
@@ -134,10 +143,10 @@ void autopilotInit(const autopilotConfig_t *config)
     positionPidCoeffs.Ki = config->position_I * POSITION_I_SCALE;
     positionPidCoeffs.Kd = config->position_D * POSITION_D_SCALE;
     positionPidCoeffs.Kf = config->position_A * POSITION_A_SCALE; // Kf used for acceleration
-    // initialise filters with approximate filter gain
-    float upsampleCutoff = pt3FilterGain(UPSAMPLING_CUTOFF_HZ, 0.01f); // 5Hz, assuming 100Hz task rate
-    pt3FilterInit(&posHold.upsample[AI_ROLL], upsampleCutoff);
-    pt3FilterInit(&posHold.upsample[AI_PITCH], upsampleCutoff);
+    posHold.lpfCutoff = config->position_cutoff * 0.01f;
+    // initialise PT3 filters with approximate filter gain
+    posHold.upsampleCutoff = pt3FilterGain(UPSAMPLING_CUTOFF_HZ_HZ, 0.01f); // 5Hz, assuming 100Hz task rate
+    resetPt3UpsampleFilters();
     // Initialise PT1 filters for earth frame axes NS and EW
     posHold.lpfCutoff = config->position_cutoff * 0.01f;
     posHold.pt1Gain = pt1FilterGain(posHold.lpfCutoff, 0.1f); // assume 10Hz GPS connection at start

@@ -87,6 +87,8 @@ typedef struct {
     float disarmThreshold;
     float latFactor;
     float lonFactor;
+    float cmToEarthAngle;
+    bool isCloseToHome;
 } rescueIntent_s;
 
 typedef struct {
@@ -118,7 +120,7 @@ rescueState_s rescueState;
 
 void gpsRescueInit(void)
 {
-    // currently no filters to initialise
+    rescueState.intent.cmToEarthAngle = 1.0f / EARTH_ANGLE_TO_CM;
 }
 
 // check for new GPS Data
@@ -192,10 +194,11 @@ static void rescueAttainPosition(void)
         rescueState.intent.disarmThreshold = gpsRescueConfig()->disarmThreshold * 0.1f;
         // initialise the required autopilot functions
         resetAltitudeControl();
-        resetPositionControl(gpsSol.llh);
+        resetPositionControl(gpsSol.llh); // enables position hold at current location
         // pre-calculate the latitude and longitude adjustment factors
-        rescueState.intent.latFactor = cos_approx(DEGREES_TO_RADIANS(DECIDEGREES_TO_DEGREES(GPS_directionToHome))) / EARTH_ANGLE_TO_CM ;
-        rescueState.intent.lonFactor = sin_approx(DEGREES_TO_RADIANS(DECIDEGREES_TO_DEGREES(GPS_directionToHome))) / (EARTH_ANGLE_TO_CM * getGpsCosLat());
+        const float directionToHomeRadians = DEGREES_TO_RADIANS(DECIDEGREES_TO_DEGREES(GPS_directionToHome));
+        rescueState.intent.latFactor = cos_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle;
+        rescueState.intent.lonFactor = sin_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle / getGpsCosLat();
         rescueState.sensor.imuYawCogGain = 1.0f;
         rescueState.sensor.previousLocation = gpsSol.llh;
         rescueState.sensor.velocityToHomeCmS = 0.0f;
@@ -203,7 +206,7 @@ static void rescueAttainPosition(void)
     case RESCUE_DO_NOTHING:
         // 20s of hover at current altitude, for switch induced sanity failures, to allow time to recover
         // do nothing
-        setTargetLocation(gpsSol.llh);
+        // setTargetLocation(gpsSol.llh);
         return;
      default:
         break;
@@ -246,14 +249,13 @@ static void rescueAttainPosition(void)
         // check no iTerm at start
 
         float distanceToMove = rescueState.intent.targetVelocityCmS * rescueState.sensor.gpsDataIntervalSeconds;
-        static bool arrivedHome = false;
         gpsLocation_t newLocation;
 
-        if (!arrivedHome) {
+        if (!rescueState.intent.isCloseToHome) {
             if (GPS_distanceToHomeCm < 10) {
                 // within 10cm of home
                 rescueState.intent.targetVelocityCmS = 0.0f;
-                arrivedHome = true;
+                rescueState.intent.isCloseToHome = true;
                 // lock autopilot target at home location
                 setTargetLocation(GPS_home_llh);
             }
@@ -265,16 +267,18 @@ static void rescueAttainPosition(void)
             newLocation.lon = rescueState.sensor.previousLocation.lon + (int32_t)(distanceToMove * rescueState.intent.lonFactor);
             rescueState.sensor.previousLocation = newLocation;
             setTargetLocation(newLocation); // update the autopilot target location to the new location
+        }
 
-       }
         DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 1, lrintf(distanceToMove));
         DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 3, lrintf(rescueState.intent.targetVelocityCmS)); // target velocity to home
         DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 4, lrintf(distanceToMove * rescueState.intent.lonFactor)); // all unused at present
         DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 2, lrintf(distanceToMove * rescueState.intent.latFactor)); // all unused at present
 
-        posControlOnNewGPSData();
+        posControlOnNewGPSData(); // update our target position
     }
-    posControlOutput(); // upsample the setpoints for pid.c
+
+    posControlOutput(); // calculate and upsample the setpoints for pid.c every iteration
+
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 0, GPS_distanceToHomeCm);
     DEBUG_SET(DEBUG_GPS_RESCUE_TRACKING, 1, lrintf(rescueState.intent.targetVelocityCmS)); // target velocity to home
 }
@@ -359,8 +363,8 @@ static void performSanityChecks(void)
         rescueState.intent.secondsFailing = constrain(rescueState.intent.secondsFailing, 0, 30);
         if (rescueState.intent.secondsFailing >= 30) {
 #ifdef USE_MAG
-            //If there is a mag and has not been disabled, try again without the mag
-            if (sensors(SENSOR_MAG) && compassConfig()->use_mag && !disableMag) {
+            //If there is an active mag, try again without it
+            if (compassEnabledAndCalibrated() && !disableMag) {
                 //Try again with mag disabled
                 disableMag = true;
                 rescueState.intent.secondsFailing = 0;
@@ -636,6 +640,7 @@ void initialiseRescueValues (void)
     rescueState.intent.targetVelocityCmS = 0.0f; // stop the quad immediately
     rescueState.intent.verticalVelocityMultiplier = 1.0f;
     rescueState.intent.targetAltitudeStepCm = 0.0f;
+    rescueState.intent.isCloseToHome = false;
     disableMag = false; // re-enable Mag on next rescue start even if it failed on a previous rescue
 }
 
@@ -673,24 +678,26 @@ void gpsRescueUpdate(void)
             // we didn't get a home point on arming
             rescueState.failure = RESCUE_NO_HOME_POINT;
             // will result in a disarm via the sanity check system, or float around if switch induced
-        } else {
-            if (GPS_distanceToHome < 5.0f && isBelowLandingAltitude()) {
-                // attempted initiation within 5m of home, and 'on the ground' -> instant disarm, for safety reasons
-                rescueState.phase = RESCUE_ABORT;
-            } else {
-                if (GPS_distanceToHome < gpsRescueConfig()->minStartDistM) {
-                    rescueState.intent.returnAltitudeCm = fmaxf(500.0f, getAltitudeCm() + (gpsRescueConfig()->initialClimbM * 100.0f));
-                    // climb above current height by buffer height, to at least 5m altitude
-                    rescueState.intent.descentDistanceM = GPS_distanceToHome;
-                    // set the descent distance to current distance, whatever that is
-                }
-                // otherwise behave as for a normal rescue
-                initialiseRescueValues(); // initialise the control related values
-                returnAltitudeLow = getAltitudeCm() < rescueState.intent.returnAltitudeCm;
-                rescueState.phase = RESCUE_ATTAIN_ALT;
-                rescueState.failure = RESCUE_HEALTHY;
-            }
+            break;
         }
+
+        if (GPS_distanceToHome < 5.0f && isBelowLandingAltitude()) {
+            // attempted initiation within 5m of home, and 'on the ground' -> instant disarm, for safety reasons
+            rescueState.phase = RESCUE_ABORT;
+            break;
+        }
+
+        if (GPS_distanceToHome < gpsRescueConfig()->minStartDistM) {
+            rescueState.intent.returnAltitudeCm = fmaxf(500.0f, getAltitudeCm() + (gpsRescueConfig()->initialClimbM * 100.0f));
+            // climb above current height by buffer height, to at least 5m altitude
+            rescueState.intent.descentDistanceM = GPS_distanceToHome;
+            // set the descent distance to current distance, whatever that is
+        }
+
+        initialiseRescueValues(); // initialise the control related values
+        returnAltitudeLow = getAltitudeCm() < rescueState.intent.returnAltitudeCm;
+        rescueState.phase = RESCUE_ATTAIN_ALT;
+        rescueState.failure = RESCUE_HEALTHY;
         break;
 
     case RESCUE_ATTAIN_ALT:
@@ -701,25 +708,12 @@ void gpsRescueUpdate(void)
             // we started low, and still are low; also true if we started high, and still are too high
             rescueState.intent.targetAltitudeStepCm = (returnAltitudeLow ? gpsRescueConfig()->ascendRate : -1.0f * gpsRescueConfig()->descendRate) * taskIntervalSeconds;
             rescueState.intent.targetAltitudeCm += rescueState.intent.targetAltitudeStepCm;
-
         } else {
             // target altitude achieved - move on to ROTATE phase, returning at target altitude
             rescueState.intent.targetAltitudeCm = rescueState.intent.returnAltitudeCm;
             rescueState.intent.targetAltitudeStepCm = 0.0f;
-
-
-            // **** TO DO:  only applies if no Mag, or no GPS lock
-            // if initiated too close, do not rotate or do anything else until sufficiently far away that a 'normal' rescue can happen
-            if (GPS_distanceToHome > gpsRescueConfig()->minStartDistM) {
-                rescueState.phase = RESCUE_ROTATE;
-            }
-
-
-
+            rescueState.phase = RESCUE_ROTATE;
         }
-
-        // climb vertically
-        rescueState.intent.targetVelocityCmS = 0.0f;
         break;
 
     case RESCUE_ROTATE:
