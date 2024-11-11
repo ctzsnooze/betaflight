@@ -82,6 +82,16 @@ void vector2Normalize(vector2_t *result, const vector2_t *v)
     }
 }
 
+// rotate 2d vector by angle
+// angle is in ragians and counterclockwise
+void vector2Rotate(vector2_t *result, const vector2_t *v, const float angle)
+{
+    vector2_t tmp;
+    tmp.x = v->x * cos_approx(angle) - v->y * sin_approx(angle);
+    tmp.y = v->x * sin_approx(angle) + v->y * cos_approx(angle);
+    *result = tmp;
+}
+
 bool vector3Equal(const vector3_t *a, const vector3_t *b)
 {
     return (a->x == b->x) && (a->y == b->y) && (a->z == b->z);

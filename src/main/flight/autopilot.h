@@ -26,8 +26,7 @@ extern float autopilotAngle[RP_AXIS_COUNT]; // Roll and pitch angles in degrees
 void autopilotInit(const autopilotConfig_t *config);
 void resetAltitudeControl(void);
 void setSticksActiveStatus(bool areSticksActive);
-void resetPositionControl(gpsLocation_t initialTargetLocation);
-void setTargetLocation(gpsLocation_t newTargetLocation);
+void resetPositionControl(const gpsLocation_t *initialTargetLocation);
 
 void altitudeControl(float targetAltitudeCm, float taskIntervalS, float verticalVelocity, float targetAltitudeStep);
 bool positionControl();

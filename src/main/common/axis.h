@@ -27,6 +27,7 @@ typedef enum {
 } axis_e;
 
 #define XYZ_AXIS_COUNT 3
+#define XY_AXIS_COUNT 2
 
 // See http://en.wikipedia.org/wiki/Flight_dynamics
 typedef enum {
@@ -43,6 +44,5 @@ typedef enum {
 } angle_index_t;
 
 #define RP_AXIS_COUNT 2
-#define EF_AXIS_COUNT 2
 
 #define GET_DIRECTION(isReversed) ((isReversed) ? -1 : 1)
