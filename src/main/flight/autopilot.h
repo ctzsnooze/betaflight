@@ -27,8 +27,7 @@ void autopilotInit(const autopilotConfig_t *config);
 void resetAltitudeControl(void);
 void setSticksActiveStatus(bool areSticksActive);
 void resetPositionControl(gpsLocation_t initialTargetLocation);
-void setTargetLocation(gpsLocation_t newTargetLocation);
-
+void setTargetLocation(gpsLocation_t newTargetLocation, bool isStopping);
 void altitudeControl(float targetAltitudeCm, float taskIntervalS, float verticalVelocity, float targetAltitudeStep);
 void (posControlOnNewGPSData) (void);
 void (posControlOutput) (void);

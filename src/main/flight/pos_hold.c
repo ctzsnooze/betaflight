@@ -101,9 +101,6 @@ void updatePosHold(timeUs_t currentTimeUs) {
     if (posHold.posHoldIsOK && posHoldStatusChecks()) {
         posHoldCheckSticks();
         posHold.posHoldIsOK = positionControl();
-    } else {
-        autopilotAngle[AI_PITCH] = 0.0f;
-        autopilotAngle[AI_ROLL] = 0.0f;
     }
 }
 

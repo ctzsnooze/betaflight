@@ -89,6 +89,7 @@ typedef struct {
     float lonFactor;
     float cmToEarthAngle;
     bool isCloseToHome;
+    float initialClimbCm;
 } rescueIntent_s;
 
 typedef struct {
@@ -121,6 +122,8 @@ rescueState_s rescueState;
 void gpsRescueInit(void)
 {
     rescueState.intent.cmToEarthAngle = 1.0f / EARTH_ANGLE_TO_CM;
+    rescueState.intent.initialClimbCm = gpsRescueConfig()->initialClimbM * 100.0f;
+    rescueState.intent.disarmThreshold = gpsRescueConfig()->disarmThreshold * 0.1f;
 }
 
 // check for new GPS Data
@@ -157,29 +160,12 @@ static void setReturnAltitude(void)
 
     // While armed...
     rescueState.intent.maxAltitudeCm = fmaxf(getAltitudeCm(), rescueState.intent.maxAltitudeCm);
+}
 
-    if (newGPSData) {
-        // set the target altitude to the current altitude.
-        rescueState.intent.targetAltitudeCm = getAltitudeCm();
-
-        // Set descend distance to the minimum of the user's preference or half the distance to home
-        rescueState.intent.descentDistanceM = fminf(0.5f * GPS_distanceToHome, gpsRescueConfig()->descentDistanceM);
-
-        const float initialClimbCm = gpsRescueConfig()->initialClimbM * 100.0f;
-        switch (gpsRescueConfig()->altitudeMode) {
-            case GPS_RESCUE_ALT_MODE_FIXED:
-                rescueState.intent.returnAltitudeCm = gpsRescueConfig()->returnAltitudeM * 100.0f;
-                break;
-            case GPS_RESCUE_ALT_MODE_CURRENT:
-                // climb above current altitude, but always return at least initial height above takeoff point, in case current altitude was negative
-                rescueState.intent.returnAltitudeCm = fmaxf(initialClimbCm, getAltitudeCm() + initialClimbCm);
-                break;
-            case GPS_RESCUE_ALT_MODE_MAX:
-            default:
-                rescueState.intent.returnAltitudeCm = rescueState.intent.maxAltitudeCm + initialClimbCm;
-                break;
-        }
-    }
+static void setLatLongSteps(float directionToHomeRadians)
+{
+    rescueState.intent.latFactor = cos_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle;
+    rescueState.intent.lonFactor = sin_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle / getGpsCosLat();
 }
 
 static void rescueAttainPosition(void)
@@ -190,18 +176,32 @@ static void rescueAttainPosition(void)
         // do nothing
         return;
     case RESCUE_INITIALIZE:
-        // initialise the positioning related settings
-        rescueState.intent.disarmThreshold = gpsRescueConfig()->disarmThreshold * 0.1f;
+        rescueState.sensor.imuYawCogGain = 1.0f;
+        rescueState.intent.targetAltitudeCm = getAltitudeCm(); // initally current altitude
+        rescueState.intent.descentDistanceM = fminf(GPS_distanceToHome, gpsRescueConfig()->descentDistanceM);
+
+        switch (gpsRescueConfig()->altitudeMode) {
+            case GPS_RESCUE_ALT_MODE_FIXED:
+                rescueState.intent.returnAltitudeCm = gpsRescueConfig()->returnAltitudeM * 100.0f;
+                break;
+            case GPS_RESCUE_ALT_MODE_CURRENT:
+                // climb above current altitude, but always return at least initial height above takeoff point, in case current altitude was negative
+                rescueState.intent.returnAltitudeCm = fmaxf(rescueState.intent.initialClimbCm, getAltitudeCm() + rescueState.intent.initialClimbCm);
+                break;
+            case GPS_RESCUE_ALT_MODE_MAX:
+            default:
+                rescueState.intent.returnAltitudeCm = rescueState.intent.maxAltitudeCm + rescueState.intent.initialClimbCm;
+                break;
+        }
+
         // initialise the required autopilot functions
         resetAltitudeControl();
         resetPositionControl(gpsSol.llh); // enables position hold at current location
-        // pre-calculate the latitude and longitude adjustment factors
-        const float directionToHomeRadians = DEGREES_TO_RADIANS(DECIDEGREES_TO_DEGREES(GPS_directionToHome));
-        rescueState.intent.latFactor = cos_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle;
-        rescueState.intent.lonFactor = sin_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle / getGpsCosLat();
-        rescueState.sensor.imuYawCogGain = 1.0f;
+        setTargetLocation(gpsSol.llh, false); // to force normal mode, not 'startup' mode with its aggressive stop
         rescueState.sensor.previousLocation = gpsSol.llh;
-        rescueState.sensor.velocityToHomeCmS = 0.0f;
+        const float directionToHomeRadians = DEGREES_TO_RADIANS(DECIDEGREES_TO_DEGREES(GPS_directionToHome));
+        setLatLongSteps(directionToHomeRadians);
+
         return;
     case RESCUE_DO_NOTHING:
         // 20s of hover at current altitude, for switch induced sanity failures, to allow time to recover
@@ -251,22 +251,15 @@ static void rescueAttainPosition(void)
         float distanceToMove = rescueState.intent.targetVelocityCmS * rescueState.sensor.gpsDataIntervalSeconds;
         gpsLocation_t newLocation;
 
-        if (!rescueState.intent.isCloseToHome) {
-            if (GPS_distanceToHomeCm < 10) {
-                // within 10cm of home
-                rescueState.intent.targetVelocityCmS = 0.0f;
-                rescueState.intent.isCloseToHome = true;
-                // lock autopilot target at home location
-                setTargetLocation(GPS_home_llh);
-            }
-        } else if (distanceToMove > 0.0f) {
+        if (distanceToMove > 0.0f) {
             // Calculate the required change in latitude and longitude based on the bearing
             // if no requested distance, target location doesn't change
             // Update the new location so that we move along the intended flightpath
             newLocation.lat = rescueState.sensor.previousLocation.lat + (int32_t)(distanceToMove * rescueState.intent.latFactor);
             newLocation.lon = rescueState.sensor.previousLocation.lon + (int32_t)(distanceToMove * rescueState.intent.lonFactor);
             rescueState.sensor.previousLocation = newLocation;
-            setTargetLocation(newLocation); // update the autopilot target location to the new location
+            const bool isStopping = rescueState.phase == RESCUE_DESCENT ? true : false;
+            setTargetLocation(newLocation, isStopping); // update the autopilot target location to the new location
         }
 
         DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 1, lrintf(distanceToMove));
@@ -641,6 +634,7 @@ void initialiseRescueValues (void)
     rescueState.intent.verticalVelocityMultiplier = 1.0f;
     rescueState.intent.targetAltitudeStepCm = 0.0f;
     rescueState.intent.isCloseToHome = false;
+    rescueState.sensor.velocityToHomeCmS = 0.0f;
     disableMag = false; // re-enable Mag on next rescue start even if it failed on a previous rescue
 }
 
