@@ -611,6 +611,7 @@ void descend(void)
     if (newGPSData) {
         const float proximityAttenuator = fminf(GPS_distanceToHome / rescueState.intent.descentDistanceM, 1.0f);
         rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * proximityAttenuator;
+        setLatLongSteps();
     }
     rescueState.intent.targetVelocityCmS *= rescueState.intent.velocityAttenuator; // gradual onset
 
