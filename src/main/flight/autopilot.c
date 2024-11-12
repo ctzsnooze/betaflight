@@ -310,6 +310,9 @@ void (posControlOnNewGPSData) (void)
         }
     } // end for loop
 
+    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 7, lrintf(posHold.distanceCm));
+
+
     if (posHold.sticksActive) {
         // keep update sanity check distance while sticks are out
         posHold.sanityCheckDistance = gpsSol.groundSpeed > 500 ? gpsSol.groundSpeed * 2.0f : 1000.0f;
@@ -345,12 +348,10 @@ void posControlOutput (void)
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 1, lrintf(posHold.efAxis[EW].distance));    // cm
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 2, lrintf(posHold.efAxis[EW].pidSum * 10)); // deg
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 3, lrintf(autopilotAngle[AI_ROLL] * 10));   // deg
-        DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 5, lrintf(autopilotAngle[AI_ROLL] * 10));  // deg
     } else {
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 1, lrintf(posHold.efAxis[NS].distance));
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 2, lrintf(posHold.efAxis[NS].pidSum * 10));
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 3, lrintf(autopilotAngle[AI_PITCH] * 10));
-        DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 5, lrintf(autopilotAngle[AI_PITCH] * 10));
     }
 }
 

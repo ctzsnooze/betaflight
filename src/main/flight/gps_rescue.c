@@ -84,6 +84,7 @@ typedef struct {
     int8_t secondsFailing;
     float verticalVelocityMultiplier;
     float yawAttenuator;
+    float velocityAttenuator;
     float disarmThreshold;
     float latFactor;
     float lonFactor;
@@ -121,7 +122,7 @@ rescueState_s rescueState;
 
 void gpsRescueInit(void)
 {
-    rescueState.intent.cmToEarthAngle = 1.0f / EARTH_ANGLE_TO_CM;
+    rescueState.intent.cmToEarthAngle = 1.0f / EARTH_ANGLE_TO_CM; // approx 0.898 cm per unit lat at equator
     rescueState.intent.initialClimbCm = gpsRescueConfig()->initialClimbM * 100.0f;
     rescueState.intent.disarmThreshold = gpsRescueConfig()->disarmThreshold * 0.1f;
 }
@@ -162,9 +163,16 @@ static void setReturnAltitude(void)
     rescueState.intent.maxAltitudeCm = fmaxf(getAltitudeCm(), rescueState.intent.maxAltitudeCm);
 }
 
-static void setLatLongSteps(float directionToHomeRadians)
+static void setLatLongSteps(void)
 {
-    rescueState.intent.latFactor = cos_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle;
+    float directionToHomeDegrees = DECIDEGREES_TO_DEGREES(GPS_directionToHome);
+    if (directionToHomeDegrees > 180) {
+        directionToHomeDegrees -= 360;
+    } else if (directionToHomeDegrees < -180) {
+        directionToHomeDegrees += 360;
+    }
+    const float directionToHomeRadians = DEGREES_TO_RADIANS(directionToHomeDegrees);
+    rescueState.intent.latFactor = cos_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle; // approx 0.0898 lat units per cm at equator
     rescueState.intent.lonFactor = sin_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle / getGpsCosLat();
 }
 
@@ -193,15 +201,11 @@ static void rescueAttainPosition(void)
                 rescueState.intent.returnAltitudeCm = rescueState.intent.maxAltitudeCm + rescueState.intent.initialClimbCm;
                 break;
         }
-
         // initialise the required autopilot functions
         resetAltitudeControl();
         resetPositionControl(gpsSol.llh); // enables position hold at current location
         setTargetLocation(gpsSol.llh, false); // to force normal mode, not 'startup' mode with its aggressive stop
         rescueState.sensor.previousLocation = gpsSol.llh;
-        const float directionToHomeRadians = DEGREES_TO_RADIANS(DECIDEGREES_TO_DEGREES(GPS_directionToHome));
-        setLatLongSteps(directionToHomeRadians);
-
         return;
     case RESCUE_DO_NOTHING:
         // 20s of hover at current altitude, for switch induced sanity failures, to allow time to recover
@@ -257,22 +261,19 @@ static void rescueAttainPosition(void)
             // Update the new location so that we move along the intended flightpath
             newLocation.lat = rescueState.sensor.previousLocation.lat + (int32_t)(distanceToMove * rescueState.intent.latFactor);
             newLocation.lon = rescueState.sensor.previousLocation.lon + (int32_t)(distanceToMove * rescueState.intent.lonFactor);
+            newLocation.altCm = rescueState.sensor.previousLocation.altCm;
             rescueState.sensor.previousLocation = newLocation;
-            const bool isStopping = rescueState.phase == RESCUE_DESCENT ? true : false;
-            setTargetLocation(newLocation, isStopping); // update the autopilot target location to the new location
+//            const bool isStopping = rescueState.phase == RESCUE_DESCENT ? true : false;
+            setTargetLocation(newLocation, false); // update the autopilot target location to the new location
         }
 
         DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 1, lrintf(distanceToMove));
-        DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 3, lrintf(rescueState.intent.targetVelocityCmS)); // target velocity to home
-        DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 4, lrintf(distanceToMove * rescueState.intent.lonFactor)); // all unused at present
-        DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 2, lrintf(distanceToMove * rescueState.intent.latFactor)); // all unused at present
 
         posControlOnNewGPSData(); // update our target position
     }
 
     posControlOutput(); // calculate and upsample the setpoints for pid.c every iteration
 
-    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 0, GPS_distanceToHomeCm);
     DEBUG_SET(DEBUG_GPS_RESCUE_TRACKING, 1, lrintf(rescueState.intent.targetVelocityCmS)); // target velocity to home
 }
 
@@ -522,6 +523,13 @@ static void sensorUpdate(void)
 
     DEBUG_SET(DEBUG_ATTITUDE, 4, rescueState.sensor.velocityToHomeCmS); // velocity to home
 
+    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 0, GPS_distanceToHomeCm);
+    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 2, lrintf(rescueState.intent.latFactor * 100.0f)); // all unused at present
+    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 3, lrintf(rescueState.intent.lonFactor * 100.0f)); // all unused at present
+    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 4, DECIDEGREES_TO_DEGREES(GPS_directionToHome));
+    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 5, lrintf(rescueState.intent.targetVelocityCmS)); // target velocity to home
+    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 6, lrintf(rescueState.intent.velocityAttenuator)); // target velocity to home
+
     DEBUG_SET(DEBUG_GPS_RESCUE_HEADING, 0, lrintf(headingErrorDeg)); 
     DEBUG_SET(DEBUG_GPS_RESCUE_HEADING, 1, lrintf(headingVsCogFactor * 100.0f)); 
     DEBUG_SET(DEBUG_GPS_RESCUE_HEADING, 2, lrintf(aircraftHeadingDeg));        // degrees * 10
@@ -597,13 +605,18 @@ void disarmOnImpact(void)
 
 void descend(void)
 {
-    if (newGPSData) {
-        const float velocityAttenuator = fminf(GPS_distanceToHome / rescueState.intent.descentDistanceM, 1.0f);
-        rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * velocityAttenuator;
+    if (rescueState.intent.velocityAttenuator < 1.0f) { // acquire velocity over one second if directly entering descent mode
+        rescueState.intent.velocityAttenuator += taskIntervalSeconds;
     }
+    if (newGPSData) {
+        const float proximityAttenuator = fminf(GPS_distanceToHome / rescueState.intent.descentDistanceM, 1.0f);
+        rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * proximityAttenuator;
+    }
+    rescueState.intent.targetVelocityCmS *= rescueState.intent.velocityAttenuator; // gradual onset
 
-    // ensure we have full yaw authority in case we entered descent mode without enough time in fly home to acquire it gracefully
-    rescueState.intent.yawAttenuator = 1.0f;
+    if (rescueState.intent.yawAttenuator > 0.0f) { // lose all yaw authority over one second
+        rescueState.intent.yawAttenuator -= taskIntervalSeconds;
+    }
 
     // set the altitude step, considering the interval between altitude readings and the descent rate
     float altitudeStepCm = taskIntervalSeconds * gpsRescueConfig()->descendRate;
@@ -630,11 +643,14 @@ void initialiseRescueValues (void)
 {
     rescueState.intent.secondsFailing = 0; // reset the sanity check timer
     rescueState.intent.yawAttenuator = 0.0f; // no yaw in the climb
+    rescueState.intent.velocityAttenuator = 0.0f; // control velocity acquisition
     rescueState.intent.targetVelocityCmS = 0.0f; // stop the quad immediately
     rescueState.intent.verticalVelocityMultiplier = 1.0f;
     rescueState.intent.targetAltitudeStepCm = 0.0f;
     rescueState.intent.isCloseToHome = false;
     rescueState.sensor.velocityToHomeCmS = 0.0f;
+    rescueState.intent.latFactor = 0.0f;
+    rescueState.intent.lonFactor = 0.0f;
     disableMag = false; // re-enable Mag on next rescue start even if it failed on a previous rescue
 }
 
@@ -716,20 +732,28 @@ void gpsRescueUpdate(void)
         }
         if (fabsf(rescueState.sensor.errorAngleDeg) < GPS_RESCUE_ALLOWED_YAW_RANGE) {
             // enter fly home phase, and enable pitch, when the yaw angle error is small enough
-            rescueState.phase = RESCUE_FLY_HOME; // enter fly home phase
+            setLatLongSteps(); // sets latitude and longitude steps from this point to home
+            if (GPS_distanceToHome <= rescueState.intent.descentDistanceM) {
+                rescueState.phase = RESCUE_DESCENT; // directly enter descend phase
+            } else {
+                rescueState.phase = RESCUE_FLY_HOME; // enter fly home phase
+            }
             rescueState.intent.secondsFailing = 0; // reset sanity timer for flight home
         }
-        rescueState.intent.targetVelocityCmS = 0.0f;
         break;
 
     case RESCUE_FLY_HOME:
         if (rescueState.intent.yawAttenuator < 1.0f) { // be sure to accumulate full yaw authority
             rescueState.intent.yawAttenuator += taskIntervalSeconds;
         }
-        if (newGPSData) {
-            rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS;
+        if (rescueState.intent.velocityAttenuator < 1.0f) { // acquire velocity over one second
+            rescueState.intent.velocityAttenuator += taskIntervalSeconds;
+        }
+        rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * rescueState.intent.velocityAttenuator;
+        if (newGPSData)
             if (GPS_distanceToHome <= rescueState.intent.descentDistanceM) {
-                rescueState.phase = RESCUE_DESCENT;
+                setLatLongSteps(); // sets latitude and longitude steps from this point to home
+                rescueState.phase = RESCUE_DESCENT; {
                 rescueState.intent.secondsFailing = 0; // reset sanity timer for descent
             }
         }

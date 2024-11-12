@@ -32,6 +32,7 @@
 
 #define GPS_DEGREES_DIVIDER 10000000L
 #define EARTH_ANGLE_TO_CM (111.3195f * 1000 * 100 / GPS_DEGREES_DIVIDER)  // latitude unit to cm at equator (111km/deg)
+// 1.113195cm per latitude unit at the equator
 #define GPS_X 1
 #define GPS_Y 0
 #define GPS_MIN_SAT_COUNT 4      // number of sats to trigger low sat count sanity check
@@ -302,7 +303,7 @@ typedef struct gpsData_s {
 extern gpsLocation_t GPS_home_llh;
 extern uint16_t GPS_distanceToHome;        // distance to home point in meters
 extern uint32_t GPS_distanceToHomeCm;      // distance to home point in cm
-extern int16_t GPS_directionToHome;        // direction to home or hol point in degrees
+extern int16_t GPS_directionToHome;        // direction to home in degrees * 10
 extern uint32_t GPS_distanceFlownInCm;     // distance flown since armed in centimeters
 
 typedef enum {
