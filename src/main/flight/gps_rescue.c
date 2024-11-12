@@ -204,7 +204,7 @@ static void rescueAttainPosition(void)
         // initialise the required autopilot functions
         resetAltitudeControl();
         resetPositionControl(gpsSol.llh); // enables position hold at current location
-        setTargetLocation(gpsSol.llh, false); // to force normal mode, not 'startup' mode with its aggressive stop
+        setTargetLocation(gpsSol.llh, true); // stop hard at the current location while climbing and rotating
         rescueState.sensor.previousLocation = gpsSol.llh;
         return;
     case RESCUE_DO_NOTHING:
@@ -247,29 +247,24 @@ static void rescueAttainPosition(void)
         Pitch / velocity controller
     */
     if (newGPSData) {
-        // TODO / queries
-        // limit to pitch only responses in autopilot when IMU is disoriented?
-        // check modifying D at start and on descent
-        // check no iTerm at start
-
-        float distanceToMove = rescueState.intent.targetVelocityCmS * rescueState.sensor.gpsDataIntervalSeconds;
-        gpsLocation_t newLocation;
-
-        if (distanceToMove > 0.0f) {
-            // Calculate the required change in latitude and longitude based on the bearing
-            // if no requested distance, target location doesn't change
-            // Update the new location so that we move along the intended flightpath
-            newLocation.lat = rescueState.sensor.previousLocation.lat + (int32_t)(distanceToMove * rescueState.intent.latFactor);
-            newLocation.lon = rescueState.sensor.previousLocation.lon + (int32_t)(distanceToMove * rescueState.intent.lonFactor);
-            newLocation.altCm = rescueState.sensor.previousLocation.altCm;
-            rescueState.sensor.previousLocation = newLocation;
-//            const bool isStopping = rescueState.phase == RESCUE_DESCENT ? true : false;
-            setTargetLocation(newLocation, false); // update the autopilot target location to the new location
+        // 
+        if (!rescueState.intent.isCloseToHome) {
+            if (!GPS_distanceToHome) {
+                setTargetLocation(GPS_home_llh, false); // simple position hold over home point
+                rescueState.intent.isCloseToHome = true;
+            } else if (rescueState.intent.targetVelocityCmS > 0.0f) {
+                // target location moves along a path at set velocity
+                const float distanceToMove = rescueState.intent.targetVelocityCmS * rescueState.sensor.gpsDataIntervalSeconds;
+                gpsLocation_t newLocation;
+                setLatLongSteps(); // update latitude and longitude step  from current location to home
+                newLocation.lat = rescueState.sensor.previousLocation.lat + (int32_t)(distanceToMove * rescueState.intent.latFactor);
+                newLocation.lon = rescueState.sensor.previousLocation.lon + (int32_t)(distanceToMove * rescueState.intent.lonFactor);
+                rescueState.sensor.previousLocation = newLocation;
+                setTargetLocation(newLocation, false); // update the target location along the path, in normal mode
+            }
         }
 
-        DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 1, lrintf(distanceToMove));
-
-        posControlOnNewGPSData(); // update our target position
+        posControlOnNewGPSData(); // run the autopilot function that gets to the target location
     }
 
     posControlOutput(); // calculate and upsample the setpoints for pid.c every iteration
@@ -524,6 +519,7 @@ static void sensorUpdate(void)
     DEBUG_SET(DEBUG_ATTITUDE, 4, rescueState.sensor.velocityToHomeCmS); // velocity to home
 
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 0, GPS_distanceToHomeCm);
+    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 1, rescueState.intent.isCloseToHome); // all unused at present
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 2, lrintf(rescueState.intent.latFactor * 100.0f)); // all unused at present
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 3, lrintf(rescueState.intent.lonFactor * 100.0f)); // all unused at present
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 4, DECIDEGREES_TO_DEGREES(GPS_directionToHome));
@@ -605,25 +601,23 @@ void disarmOnImpact(void)
 
 void descend(void)
 {
-    if (rescueState.intent.velocityAttenuator < 1.0f) { // acquire velocity over one second if directly entering descent mode
+    // zero yaw authority is preferable to rotating on every tiny overshoot of home
+
+    // adjust target velocity depending on proximity to home point
+    if (rescueState.intent.velocityAttenuator < 1.0f) { // acquire velocity over one second if entered directly
         rescueState.intent.velocityAttenuator += taskIntervalSeconds;
     }
     if (newGPSData) {
         const float proximityAttenuator = fminf(GPS_distanceToHome / rescueState.intent.descentDistanceM, 1.0f);
         rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * proximityAttenuator;
-        setLatLongSteps();
     }
-    rescueState.intent.targetVelocityCmS *= rescueState.intent.velocityAttenuator; // gradual onset
+    rescueState.intent.targetVelocityCmS *= rescueState.intent.velocityAttenuator;
 
-    if (rescueState.intent.yawAttenuator > 0.0f) { // lose all yaw authority over one second
-        rescueState.intent.yawAttenuator -= taskIntervalSeconds;
-    }
-
-    // set the altitude step, considering the interval between altitude readings and the descent rate
+    // adjustx the altitude step, considering the interval between altitude readings and the descent rate
     float altitudeStepCm = taskIntervalSeconds * gpsRescueConfig()->descendRate;
 
     // descend more slowly if the return home altitude was less than 20m
-    const float descentRateAttenuator = constrainf (rescueState.intent.returnAltitudeCm / 2000.0f, 0.25f, 1.0f);
+    const float descentRateAttenuator = constrainf(rescueState.intent.returnAltitudeCm / 2000.0f, 0.25f, 1.0f);
     altitudeStepCm *= descentRateAttenuator;
     // slowest descent rate will be 1/4 of normal when we start descending at or below 5m above take-off point.
     // otherwise a rescue initiated very low and close may not get all the way home
@@ -733,8 +727,8 @@ void gpsRescueUpdate(void)
         }
         if (fabsf(rescueState.sensor.errorAngleDeg) < GPS_RESCUE_ALLOWED_YAW_RANGE) {
             // enter fly home phase, and enable pitch, when the yaw angle error is small enough
-            setLatLongSteps(); // sets latitude and longitude steps from this point to home
             if (GPS_distanceToHome <= rescueState.intent.descentDistanceM) {
+                rescueState.intent.yawAttenuator = 0.0f;
                 rescueState.phase = RESCUE_DESCENT; // directly enter descend phase
             } else {
                 rescueState.phase = RESCUE_FLY_HOME; // enter fly home phase
@@ -753,7 +747,7 @@ void gpsRescueUpdate(void)
         rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * rescueState.intent.velocityAttenuator;
         if (newGPSData)
             if (GPS_distanceToHome <= rescueState.intent.descentDistanceM) {
-                setLatLongSteps(); // sets latitude and longitude steps from this point to home
+                rescueState.intent.yawAttenuator = 0.0f;
                 rescueState.phase = RESCUE_DESCENT; {
                 rescueState.intent.secondsFailing = 0; // reset sanity timer for descent
             }
