@@ -80,7 +80,7 @@ typedef struct {
     float targetAltitudeCm;
     float targetAltitudeStepCm;
     float targetVelocityCmS;
-    float descentDistanceM;
+    float descentDistanceCm;
     int8_t secondsFailing;
     float verticalVelocityMultiplier;
     float yawAttenuator;
@@ -186,7 +186,6 @@ static void rescueAttainPosition(void)
     case RESCUE_INITIALIZE:
         rescueState.sensor.imuYawCogGain = 1.0f;
         rescueState.intent.targetAltitudeCm = getAltitudeCm(); // initally current altitude
-        rescueState.intent.descentDistanceM = fminf(GPS_distanceToHome, gpsRescueConfig()->descentDistanceM);
 
         switch (gpsRescueConfig()->altitudeMode) {
             case GPS_RESCUE_ALT_MODE_FIXED:
@@ -250,7 +249,7 @@ static void rescueAttainPosition(void)
         // 
         if (!rescueState.intent.isCloseToHome) {
             if (!GPS_distanceToHome) {
-                setTargetLocation(GPS_home_llh, false); // simple position hold over home point
+                setTargetLocation(GPS_home_llh, false); // if within 1m of home, simple position hold around home point
                 rescueState.intent.isCloseToHome = true;
             } else if (rescueState.intent.targetVelocityCmS > 0.0f) {
                 // target location moves along a path at set velocity
@@ -601,14 +600,14 @@ void disarmOnImpact(void)
 
 void descend(void)
 {
-    // zero yaw authority is preferable to rotating on every tiny overshoot of home
+    // zero yaw authority stops yawing when overshooting home, is set once, before entry to descent phase
 
     // adjust target velocity depending on proximity to home point
     if (rescueState.intent.velocityAttenuator < 1.0f) { // acquire velocity over one second if entered directly
         rescueState.intent.velocityAttenuator += taskIntervalSeconds;
     }
     if (newGPSData) {
-        const float proximityAttenuator = fminf(GPS_distanceToHome / rescueState.intent.descentDistanceM, 1.0f);
+        const float proximityAttenuator = rescueState.intent.descentDistanceCm ? fminf(GPS_distanceToHomeCm / rescueState.intent.descentDistanceCm, 1.0f) : 0.0f;
         rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * proximityAttenuator;
     }
     rescueState.intent.targetVelocityCmS *= rescueState.intent.velocityAttenuator;
@@ -616,7 +615,7 @@ void descend(void)
     // adjustx the altitude step, considering the interval between altitude readings and the descent rate
     float altitudeStepCm = taskIntervalSeconds * gpsRescueConfig()->descendRate;
 
-    // descend more slowly if the return home altitude was less than 20m
+    // descend more slowly if the set return home altitude is less than 20m
     const float descentRateAttenuator = constrainf(rescueState.intent.returnAltitudeCm / 2000.0f, 0.25f, 1.0f);
     altitudeStepCm *= descentRateAttenuator;
     // slowest descent rate will be 1/4 of normal when we start descending at or below 5m above take-off point.
@@ -636,6 +635,14 @@ void descend(void)
 
 void initialiseRescueValues (void)
 {
+    rescueState.intent.descentDistanceCm = fminf(GPS_distanceToHomeCm, gpsRescueConfig()->descentDistanceM * 100.0f);
+    if (GPS_distanceToHomeCm < gpsRescueConfig()->minStartDistM * 100.0f) {
+        rescueState.intent.returnAltitudeCm = fmaxf(500.0f, getAltitudeCm() + (gpsRescueConfig()->initialClimbM * 100.0f));
+        // climb above current height by buffer height, to at least 5m altitude
+        rescueState.intent.descentDistanceCm = GPS_distanceToHomeCm;
+        // set the descent distance to current distance, noting this could be zero
+    }
+
     rescueState.intent.secondsFailing = 0; // reset the sanity check timer
     rescueState.intent.yawAttenuator = 0.0f; // no yaw in the climb
     rescueState.intent.velocityAttenuator = 0.0f; // control velocity acquisition
@@ -686,17 +693,10 @@ void gpsRescueUpdate(void)
             break;
         }
 
-        if (GPS_distanceToHome < 5.0f && isBelowLandingAltitude()) {
+        if (GPS_distanceToHome < 5 && isBelowLandingAltitude()) {
             // attempted initiation within 5m of home, and 'on the ground' -> instant disarm, for safety reasons
             rescueState.phase = RESCUE_ABORT;
             break;
-        }
-
-        if (GPS_distanceToHome < gpsRescueConfig()->minStartDistM) {
-            rescueState.intent.returnAltitudeCm = fmaxf(500.0f, getAltitudeCm() + (gpsRescueConfig()->initialClimbM * 100.0f));
-            // climb above current height by buffer height, to at least 5m altitude
-            rescueState.intent.descentDistanceM = GPS_distanceToHome;
-            // set the descent distance to current distance, whatever that is
         }
 
         initialiseRescueValues(); // initialise the control related values
@@ -727,9 +727,9 @@ void gpsRescueUpdate(void)
         }
         if (fabsf(rescueState.sensor.errorAngleDeg) < GPS_RESCUE_ALLOWED_YAW_RANGE) {
             // enter fly home phase, and enable pitch, when the yaw angle error is small enough
-            if (GPS_distanceToHome <= rescueState.intent.descentDistanceM) {
-                rescueState.intent.yawAttenuator = 0.0f;
+            if (GPS_distanceToHomeCm <= rescueState.intent.descentDistanceCm) {
                 rescueState.phase = RESCUE_DESCENT; // directly enter descend phase
+                rescueState.intent.yawAttenuator = 0.0f; // block yaw while descending
             } else {
                 rescueState.phase = RESCUE_FLY_HOME; // enter fly home phase
             }
@@ -746,9 +746,9 @@ void gpsRescueUpdate(void)
         }
         rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * rescueState.intent.velocityAttenuator;
         if (newGPSData)
-            if (GPS_distanceToHome <= rescueState.intent.descentDistanceM) {
-                rescueState.intent.yawAttenuator = 0.0f;
+            if (GPS_distanceToHomeCm <= rescueState.intent.descentDistanceCm) {
                 rescueState.phase = RESCUE_DESCENT; {
+                rescueState.intent.yawAttenuator = 0.0f; // block yaw while descending
                 rescueState.intent.secondsFailing = 0; // reset sanity timer for descent
             }
         }
