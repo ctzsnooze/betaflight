@@ -29,7 +29,7 @@ void setSticksActiveStatus(bool areSticksActive);
 void resetPositionControl(gpsLocation_t initialTargetLocation);
 void setTargetLocation(gpsLocation_t newTargetLocation, bool isStopping);
 void altitudeControl(float targetAltitudeCm, float taskIntervalS, float verticalVelocity, float targetAltitudeStep);
-void (posControlOnNewGPSData) (void);
+void (posControlOnNewGpsData) (void);
 void (posControlOutput) (void);
 bool positionControl(void);
 

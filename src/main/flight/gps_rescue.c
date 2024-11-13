@@ -129,15 +129,15 @@ void gpsRescueInit(void)
 }
 
 // check for new GPS Data
-static bool newGPSData = false;
+static bool newGpsData = false;
 static uint16_t previousGpsStamp = 0;
 static void gpsRescueNewGpsData(void)
 {
     if (getGpsStamp() != previousGpsStamp) {
         previousGpsStamp = getGpsStamp();
-        newGPSData = true;
+        newGpsData = true;
     } else {
-        newGPSData = false;
+        newGpsData = false;
     }
 } 
 
@@ -243,7 +243,7 @@ static void rescueAttainPosition(void)
     /*
         Pitch / velocity controller
     */
-    if (newGPSData) {
+    if (newGpsData) {
         if (!rescueState.intent.isCloseToHome) {
             if (GPS_distanceToHomeCm < 50  && rescueState.phase == RESCUE_LANDING) {
                 setTargetLocation(GPS_home_llh, false); // if within 0.5m of home and low altitude, simple position hold around home point
@@ -260,7 +260,7 @@ static void rescueAttainPosition(void)
             }
         }
 
-        posControlOnNewGPSData(); // run the autopilot function that gets to the target location
+        posControlOnNewGpsData(); // run the autopilot function that gets to the target location
     }
 
     posControlOutput(); // calculate and upsample the setpoints for pid.c every iteration
@@ -476,7 +476,7 @@ static void sensorUpdate(void)
     }
 
     static float prevDistanceToHomeCm = 0.0f;
-    if (newGPSData) {
+    if (newGpsData) {
         rescueState.sensor.gpsDataIntervalSeconds = getGpsDataIntervalSeconds();
         // Range from 10ms (100hz) to 1000ms (1Hz). Intended to cover common GPS data rates and exclude unusual values.
 
@@ -603,7 +603,7 @@ void descend(void)
     if (rescueState.intent.velocityAttenuator < 1.0f) { // acquire velocity over one second if entered directly
         rescueState.intent.velocityAttenuator += taskIntervalSeconds;
     }
-    if (newGPSData) {
+    if (newGpsData) {
         const float proximityAttenuator = rescueState.intent.descentDistanceCm ? fminf(GPS_distanceToHomeCm / rescueState.intent.descentDistanceCm, 1.0f) : 0.0f;
         rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * proximityAttenuator;
     }
@@ -667,7 +667,7 @@ void gpsRescueUpdate(void)
 
     // Will now be in RESCUE_INITIALIZE mode, if just entered Rescue while IDLE, otherwise stays IDLE
 
-    gpsRescueNewGpsData(); // if new GPS data, set newGPSData true
+    gpsRescueNewGpsData(); // if new GPS data, set newGpsData true
     sensorUpdate(); // always get latest GPS and Altitude data, update ascend and descend rates
 
     static bool returnAltitudeLow = true;
@@ -746,7 +746,7 @@ void gpsRescueUpdate(void)
             rescueState.intent.velocityAttenuator += taskIntervalSeconds;
         }
         rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * rescueState.intent.velocityAttenuator;
-        if (newGPSData)
+        if (newGpsData)
             if (GPS_distanceToHomeCm <= rescueState.intent.descentDistanceCm) {
                 rescueState.phase = RESCUE_DESCENT; {
                 rescueState.intent.yawAttenuator = 0.0f; // block yaw while descending
@@ -792,8 +792,6 @@ void gpsRescueUpdate(void)
 
     performSanityChecks();
     rescueAttainPosition();
-
-    newGPSData = false;
 }
 
 float gpsRescueGetYawRate(void)

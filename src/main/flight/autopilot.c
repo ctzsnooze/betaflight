@@ -221,7 +221,7 @@ void resetLocation(earthFrame_t *efAxis, axisEF_t loopAxis)
     efAxis->previousDistance = 0.0f; // and reset the previous distance
 }
 
-void (posControlOnNewGPSData) (void)
+void (posControlOnNewGpsData) (void)
 {
     posHold.gpsDataIntervalS = getGpsDataIntervalSeconds(); // interval for current GPS data value 0.01s to 1.0s
     posHold.gpsDataFreqHz = 1.0f / posHold.gpsDataIntervalS;
@@ -359,7 +359,7 @@ bool positionControl(void)
 {
     if (getGpsStamp() != previousGpsStamp) {
         previousGpsStamp = getGpsStamp();
-        posControlOnNewGPSData();
+        posControlOnNewGpsData();
     }
     posControlOutput();
     // ** Sanity check for Pos Hold failure **

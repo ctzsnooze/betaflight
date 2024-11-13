@@ -1133,6 +1133,7 @@ extern "C" {
     bool isFixedWing(void) { return false; }
     void compassStartCalibration(void) {}
     bool compassIsCalibrationComplete(void) { return true; }
+    bool compassEnabledAndCalibrated(void) { return true; }
     bool isUpright(void) { return mockIsUpright; }
     void blackboxLogEvent(FlightLogEvent, union flightLogEventData_u *) {};
     void gyroFiltering(timeUs_t) {};
