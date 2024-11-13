@@ -203,14 +203,11 @@ static void rescueAttainPosition(void)
         }
         // initialise the required autopilot functions
         resetAltitudeControl();
-        resetPositionControl(gpsSol.llh); // enables position hold at current location
-        setTargetLocation(gpsSol.llh, false); // stop hard at the current location while climbing and rotating
-        rescueState.sensor.previousLocation = gpsSol.llh;
+        resetPositionControl(gpsSol.llh); // enables position hold at current location with hard stop
         return;
     case RESCUE_DO_NOTHING:
         // 20s of hover at current altitude, for switch induced sanity failures, to allow time to recover
         // do nothing
-        // setTargetLocation(gpsSol.llh);
         return;
      default:
         break;
@@ -727,13 +724,16 @@ void gpsRescueUpdate(void)
             rescueState.intent.yawAttenuator += taskIntervalSeconds;
         }
         if (fabsf(rescueState.sensor.errorAngleDeg) < GPS_RESCUE_ALLOWED_YAW_RANGE) {
-            // enter fly home phase, and enable pitch, when the yaw angle error is small enough
+            // enter fly home or descend phase, when the yaw angle error is small enough
             if (GPS_distanceToHomeCm <= rescueState.intent.descentDistanceCm) {
                 rescueState.phase = RESCUE_DESCENT; // directly enter descend phase
                 rescueState.intent.yawAttenuator = 0.0f; // block yaw while descending
+                
             } else {
                 rescueState.phase = RESCUE_FLY_HOME; // enter fly home phase
             }
+            setTargetLocation(gpsSol.llh, false);  // update autopilot.c target location, with iTerm and D
+            rescueState.sensor.previousLocation = gpsSol.llh; // set previous location to same point to avoid large jump in pids
             rescueState.intent.secondsFailing = 0; // reset sanity timer for flight home
         }
         break;
