@@ -44,7 +44,7 @@
 #define POSITION_I_SCALE  0.0001f
 #define POSITION_D_SCALE  0.0015f
 #define POSITION_A_SCALE  0.0008f
-#define UPSAMPLING_CUTOFF_HZ_HZ 5.0f
+#define UPSAMPLING_CUTOFF_HZ 5.0f
 
 static pidCoefficient_t altitudePidCoeffs;
 static pidCoefficient_t positionPidCoeffs;
@@ -145,7 +145,7 @@ void autopilotInit(const autopilotConfig_t *config)
     positionPidCoeffs.Kf = config->position_A * POSITION_A_SCALE; // Kf used for acceleration
     posHold.lpfCutoff = config->position_cutoff * 0.01f;
     // initialise PT3 filters with approximate filter gain
-    posHold.upsampleCutoff = pt3FilterGain(UPSAMPLING_CUTOFF_HZ_HZ, 0.01f); // 5Hz, assuming 100Hz task rate
+    posHold.upsampleCutoff = pt3FilterGain(UPSAMPLING_CUTOFF_HZ, 0.01f); // 5Hz, assuming 100Hz task rate
     resetPt3UpsampleFilters();
     // Initialise PT1 filters for earth frame axes NS and EW
     posHold.lpfCutoff = config->position_cutoff * 0.01f;
