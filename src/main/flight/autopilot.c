@@ -252,7 +252,7 @@ void (posControlOnNewGPSData) (void)
         // ** I **
         efAxis->integral += efAxis->isStopping ? 0.0f : efAxis->distance * posHold.gpsDataIntervalS;
         // only add to iTerm while in hold phase
-        const float pidI = efAxis->integral * positionPidCoeffs.Ki;
+        const float pidI = FLIGHT_MODE(GPS_RESCUE_MODE) ? 0.0f : efAxis->integral * positionPidCoeffs.Ki;
 
         // ** D ** //
         // Velocity derived from GPS position works better than module supplied GPS Speed and Heading information

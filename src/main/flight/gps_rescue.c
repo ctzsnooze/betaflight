@@ -125,6 +125,7 @@ void gpsRescueInit(void)
     rescueState.intent.cmToEarthAngle = 1.0f / EARTH_ANGLE_TO_CM; // approx 0.898 cm per unit lat at equator
     rescueState.intent.initialClimbCm = gpsRescueConfig()->initialClimbM * 100.0f;
     rescueState.intent.disarmThreshold = gpsRescueConfig()->disarmThreshold * 0.1f;
+    rescueState.intent.descentDistanceCm = gpsRescueConfig()->descentDistanceM * 100.0f;
 }
 
 // check for new GPS Data
@@ -203,7 +204,7 @@ static void rescueAttainPosition(void)
         // initialise the required autopilot functions
         resetAltitudeControl();
         resetPositionControl(gpsSol.llh); // enables position hold at current location
-        setTargetLocation(gpsSol.llh, true); // stop hard at the current location while climbing and rotating
+        setTargetLocation(gpsSol.llh, false); // stop hard at the current location while climbing and rotating
         rescueState.sensor.previousLocation = gpsSol.llh;
         return;
     case RESCUE_DO_NOTHING:
@@ -246,10 +247,9 @@ static void rescueAttainPosition(void)
         Pitch / velocity controller
     */
     if (newGPSData) {
-        // 
         if (!rescueState.intent.isCloseToHome) {
-            if (!GPS_distanceToHome) {
-                setTargetLocation(GPS_home_llh, false); // if within 1m of home, simple position hold around home point
+            if (GPS_distanceToHomeCm < 50  && rescueState.phase == RESCUE_LANDING) {
+                setTargetLocation(GPS_home_llh, false); // if within 0.5m of home and low altitude, simple position hold around home point
                 rescueState.intent.isCloseToHome = true;
             } else if (rescueState.intent.targetVelocityCmS > 0.0f) {
                 // target location moves along a path at set velocity
@@ -615,7 +615,7 @@ void descend(void)
     // adjustx the altitude step, considering the interval between altitude readings and the descent rate
     float altitudeStepCm = taskIntervalSeconds * gpsRescueConfig()->descendRate;
 
-    // descend more slowly if the set return home altitude is less than 20m
+    // descend more slowly if the intended return home altitude is less than 20m
     const float descentRateAttenuator = constrainf(rescueState.intent.returnAltitudeCm / 2000.0f, 0.25f, 1.0f);
     altitudeStepCm *= descentRateAttenuator;
     // slowest descent rate will be 1/4 of normal when we start descending at or below 5m above take-off point.
@@ -635,11 +635,12 @@ void descend(void)
 
 void initialiseRescueValues (void)
 {
-    rescueState.intent.descentDistanceCm = fminf(GPS_distanceToHomeCm, gpsRescueConfig()->descentDistanceM * 100.0f);
+//     if (gpsSol.groundSpeed > 500) {
+//         rescueState.intent.descentDistanceCm = fmaxf(rescueState.intent.descentDistanceCm, gpsSol.groundSpeed * 2);
+//     }
     if (GPS_distanceToHomeCm < gpsRescueConfig()->minStartDistM * 100.0f) {
         rescueState.intent.returnAltitudeCm = fmaxf(500.0f, getAltitudeCm() + (gpsRescueConfig()->initialClimbM * 100.0f));
         // climb above current height by buffer height, to at least 5m altitude
-        rescueState.intent.descentDistanceCm = GPS_distanceToHomeCm;
         // set the descent distance to current distance, noting this could be zero
     }
 
