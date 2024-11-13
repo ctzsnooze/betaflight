@@ -73,7 +73,7 @@ typedef struct {
     float gpsDataFreqHz;
     float sanityCheckDistance;
     float upsampleCutoff;
-    float lpfCutoff;
+    float pt1Cutoff;
     float pt1Gain;
     bool sticksActive;
     float maxAngle;
@@ -87,7 +87,7 @@ static posHoldState posHold = {
     .gpsDataIntervalS = 0.1f,
     .gpsDataFreqHz = 10.0f,
     .sanityCheckDistance = 1000.0f,
-    .lpfCutoff = 1.0f,
+    .pt1Cutoff = 1.0f,
     .pt1Gain = 1.0f,
     .sticksActive = false,
     .distanceCm = 0.0f,
@@ -143,13 +143,13 @@ void autopilotInit(const autopilotConfig_t *config)
     positionPidCoeffs.Ki = config->position_I * POSITION_I_SCALE;
     positionPidCoeffs.Kd = config->position_D * POSITION_D_SCALE;
     positionPidCoeffs.Kf = config->position_A * POSITION_A_SCALE; // Kf used for acceleration
-    posHold.lpfCutoff = config->position_cutoff * 0.01f;
+    posHold.pt1Cutoff = config->position_cutoff * 0.01f;
     // initialise PT3 filters with approximate filter gain
     posHold.upsampleCutoff = pt3FilterGain(UPSAMPLING_CUTOFF_HZ, 0.01f); // 5Hz, assuming 100Hz task rate
     resetPt3UpsampleFilters();
     // Initialise PT1 filters for earth frame axes NS and EW
-    posHold.lpfCutoff = config->position_cutoff * 0.01f;
-    posHold.pt1Gain = pt1FilterGain(posHold.lpfCutoff, 0.1f); // assume 10Hz GPS connection at start
+    posHold.pt1Cutoff = config->position_cutoff * 0.01f;
+    posHold.pt1Gain = pt1FilterGain(posHold.pt1Cutoff, 0.1f); // assume 10Hz GPS connection at start
     initializeEfAxisFilters(&posHold.efAxis[EW], posHold.pt1Gain);
     initializeEfAxisFilters(&posHold.efAxis[NS], posHold.pt1Gain);
 }
@@ -237,7 +237,7 @@ void (posControlOnNewGPSData) (void)
 
     const float leak = 1.0f - 0.4f * posHold.gpsDataIntervalS;
     // leak iTerm while sticks are centered, 2s time constant approximately
-    const float lpfGain = pt1FilterGain(posHold.lpfCutoff, posHold.gpsDataIntervalS);
+    const float lpfGain = pt1FilterGain(posHold.pt1Cutoff, posHold.gpsDataIntervalS);
 
     static float prevPidDASquared = 0.0f; // if we limit DA on true vector length
     const float maxDAAngle = 35.0f; // limit in degrees; arbitrary angle
