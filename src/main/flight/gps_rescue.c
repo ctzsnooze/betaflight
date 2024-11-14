@@ -100,8 +100,6 @@ typedef struct {
     float gpsDataIntervalSeconds;
     float velocityToHomeCmS;
     float imuYawCogGain;
-    gpsLocation_t initiationPoint;
-    gpsLocation_t targetLocation;
 } rescueSensorData_s;
 
 typedef struct {
@@ -185,10 +183,12 @@ static void rescueAttainPosition(void)
     case RESCUE_IDLE:
         // do nothing
         return;
+    case RESCUE_DO_NOTHING:
+        // 20s of hover at current altitude, for switch induced sanity failures, to allow time to recover
+        // don't hold position in case IMU disorientation caused a sanity failure
+        return;
     case RESCUE_INITIALIZE:
-        rescueState.sensor.imuYawCogGain = 1.0f;
         rescueState.intent.targetAltitudeCm = getAltitudeCm(); // initally current altitude
-
         switch (gpsRescueConfig()->altitudeMode) {
             case GPS_RESCUE_ALT_MODE_FIXED:
                 rescueState.intent.returnAltitudeCm = gpsRescueConfig()->returnAltitudeM * 100.0f;
@@ -205,7 +205,6 @@ static void rescueAttainPosition(void)
         // initialise the required autopilot functions
         resetAltitudeControl();
         resetPositionControl(gpsSol.llh); // enables position hold at current location with hard stop
-        rescueState.sensor.targetLocation = gpsSol.llh;
         return;
      default:
         break;
@@ -245,13 +244,12 @@ static void rescueAttainPosition(void)
         if (rescueState.intent.targetVelocityCmS > 0.0f) {
             // target location moves along a path at set velocity
             const float distanceToMove = rescueState.intent.targetVelocityCmS * rescueState.sensor.gpsDataIntervalSeconds;
-            setLatLongSteps(); // update latitude and longitude step  from current location to home
-            rescueState.sensor.targetLocation.lat += (int32_t)(distanceToMove * rescueState.intent.latFactor);
-            rescueState.sensor.targetLocation.lon += (int32_t)(distanceToMove * rescueState.intent.lonFactor);
-            setTargetLocation(rescueState.sensor.targetLocation, false); // update the target location along the path, in normal mode
-        } // else are starting up and target location is fixed at initiation point
-
-        posControlOnNewGpsData(); // run the autopilot function that gets to the target location
+            setLatLongSteps(); // update latitude and longitude step from current location to home
+            const int32_t latStep = distanceToMove * rescueState.intent.latFactor;
+            const int32_t lonStep = distanceToMove * rescueState.intent.lonFactor;
+            moveTargetLocation(latStep, lonStep); // send steps to update the target location in autopilot.c 
+        }
+        posControlOnNewGpsData(); // run the autopilot function that moves the aircraft to the target location
     }
 
     posControlOutput(); // calculate and upsample the setpoints for pid.c every iteration
@@ -414,7 +412,6 @@ static void performSanityChecks(void)
 static void sensorUpdate(void)
 {
     rescueState.sensor.healthy = gpsIsHealthy();
-    const float currentAltitudeCm = getAltitudeCm();
 
     const float bearingToHomeDeg = DECIDEGREES_TO_DEGREES(GPS_directionToHome); // 0 to 360
     const float aircraftHeadingDeg = DECIDEGREES_TO_DEGREES(attitude.values.yaw); // 0 to 360
@@ -526,6 +523,7 @@ static void sensorUpdate(void)
     DEBUG_SET(DEBUG_GPS_RESCUE_HEADING, 5, gpsSol.groundCourse / 10);  // heading value used for yaw angle
     DEBUG_SET(DEBUG_GPS_RESCUE_HEADING, 6, lrintf(rescueState.sensor.imuYawCogGain * 10.0f));  // heading value used for yaw angle
 
+    const float currentAltitudeCm = getAltitudeCm();
     DEBUG_SET(DEBUG_GPS_RESCUE_TRACKING, 2, lrintf(currentAltitudeCm));
     DEBUG_SET(DEBUG_GPS_RESCUE_TRACKING, 4, lrintf(aircraftHeadingDeg));                 // estimated heading of the quad (direction nose is pointing in)
     DEBUG_SET(DEBUG_GPS_RESCUE_TRACKING, 5, lrintf(bearingToHomeDeg));  // angle to home derived from GPS location and home position
@@ -638,6 +636,7 @@ void initialiseRescueValues (void)
         // set the descent distance to current distance, noting this could be zero
     }
 
+    rescueState.sensor.imuYawCogGain = 1.0f;
     rescueState.intent.secondsFailing = 0; // reset the sanity check timer
     rescueState.intent.yawAttenuator = 0.0f; // no yaw in the climb
     rescueState.intent.velocityAttenuator = 0.0f; // control velocity acquisition

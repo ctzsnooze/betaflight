@@ -202,13 +202,14 @@ void setSticksActiveStatus(bool areSticksActive)
     posHold.sticksActive = areSticksActive;
 }
 
-void setTargetLocation(gpsLocation_t newTargetLocation, bool isStopping)
+void moveTargetLocation(int32_t latStep, int32_t lonStep)
 {
-    currentTargetLocation = newTargetLocation;
-    posHold.efAxis[EW].isStopping = isStopping;
-    posHold.efAxis[NS].isStopping = isStopping;
-    // function is intended for only small changes in position
-    // when stopping, D is stronger, and iTerm is prevented from accumulating
+    currentTargetLocation.lon += posHold.efAxis[EW].isStopping ? 0 : lonStep;
+    currentTargetLocation.lat += posHold.efAxis[NS].isStopping ? 0 : latStep;
+    // client runs this function, once position hold is initiated, to provide velocity / path control
+    // start adding steps only after axis stopped moving, to avoid iTerm windup during the stop, and glitches from sudden location change
+    // this function should run before requesting posControlOnNewGpsData to action the change 
+    // in GPS Rescue, steps reflect requested velocity, which will be zero until rotation is complete
 }
 
 void resetLocation(earthFrame_t *efAxis, axisEF_t loopAxis)
@@ -249,8 +250,13 @@ void (posControlOnNewGpsData) (void)
         const float pidP = efAxis->distance * positionPidCoeffs.Kp;
 
         // ** I **
+        // no accumulation while stopping,
         efAxis->integral += efAxis->isStopping ? 0.0f : efAxis->distance * posHold.gpsDataIntervalS;
-        // only add to iTerm while in hold phase
+
+        // no accumulation while stopping, and no more than 20 degrees of angle from iTerm alone
+//        efAxis->integral += efAxis->isStopping || fabsf(efAxis->integral) > 200.0f ? 0.0f : efAxis->distance * posHold.gpsDataIntervalS;
+
+        // no iTerm in GPS Rescue mode for now but perhaps an effective limiter may work better
         const float pidI = FLIGHT_MODE(GPS_RESCUE_MODE) ? 0.0f : efAxis->integral * positionPidCoeffs.Ki;
 
         // ** D ** //
@@ -280,7 +286,7 @@ void (posControlOnNewGpsData) (void)
             // 'phase' after sticks stop, but before craft has stopped
             pidD *= 1.6f; // aribitrary D boost to stop more quickly when sticks are centered
             if (velocity * velocityFiltered < 0.0f) {
-                // when an axis has nearly stopped moving, reset it and end it's start phase
+                // when an axis has nearly stopped moving, reset it and end its 'stopping' phase
                 resetLocation(efAxis, loopAxis);
                 efAxis->isStopping = false;
             }
