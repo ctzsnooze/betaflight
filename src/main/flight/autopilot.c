@@ -226,7 +226,7 @@ void (posControlOnNewGpsData) (void)
     posHold.gpsDataIntervalS = getGpsDataIntervalSeconds(); // interval for current GPS data value 0.01s to 1.0s
     posHold.gpsDataFreqHz = 1.0f / posHold.gpsDataIntervalS;
 
-    // first get NS and EW distances from current location (gpsSol.llh) to target location
+    // first get NS and EW distances from current location (gpsSol.llh) to target location in cm
     vector2_t gpsDistance;
     GPS_distances(&gpsSol.llh, &currentTargetLocation, &gpsDistance.x, &gpsDistance.y); // X is EW, Y is NS
     posHold.efAxis[EW].distance = gpsDistance.x;

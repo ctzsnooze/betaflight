@@ -100,7 +100,7 @@ typedef struct {
     float gpsDataIntervalSeconds;
     float velocityToHomeCmS;
     float imuYawCogGain;
-    gpsLocation_t previousLocation;
+    gpsLocation_t targetLocation;
 } rescueSensorData_s;
 
 typedef struct {
@@ -204,6 +204,7 @@ static void rescueAttainPosition(void)
         // initialise the required autopilot functions
         resetAltitudeControl();
         resetPositionControl(gpsSol.llh); // enables position hold at current location with hard stop
+        rescueState.sensor.targetLocation = gpsSol.llh;
         return;
     case RESCUE_DO_NOTHING:
         // 20s of hover at current altitude, for switch induced sanity failures, to allow time to recover
@@ -251,12 +252,10 @@ static void rescueAttainPosition(void)
             } else if (rescueState.intent.targetVelocityCmS > 0.0f) {
                 // target location moves along a path at set velocity
                 const float distanceToMove = rescueState.intent.targetVelocityCmS * rescueState.sensor.gpsDataIntervalSeconds;
-                gpsLocation_t newLocation;
                 setLatLongSteps(); // update latitude and longitude step  from current location to home
-                newLocation.lat = rescueState.sensor.previousLocation.lat + (int32_t)(distanceToMove * rescueState.intent.latFactor);
-                newLocation.lon = rescueState.sensor.previousLocation.lon + (int32_t)(distanceToMove * rescueState.intent.lonFactor);
-                rescueState.sensor.previousLocation = newLocation;
-                setTargetLocation(newLocation, false); // update the target location along the path, in normal mode
+                rescueState.sensor.targetLocation.lat += (int32_t)(distanceToMove * rescueState.intent.latFactor);
+                rescueState.sensor.targetLocation.lon += (int32_t)(distanceToMove * rescueState.intent.lonFactor);
+                setTargetLocation(rescueState.sensor.targetLocation, false); // update the target location along the path, in normal mode
             }
         }
 
@@ -723,16 +722,15 @@ void gpsRescueUpdate(void)
             rescueState.intent.yawAttenuator += taskIntervalSeconds;
         }
         if (fabsf(rescueState.sensor.errorAngleDeg) < GPS_RESCUE_ALLOWED_YAW_RANGE) {
-            // enter fly home or descend phase, when the yaw angle error is small enough
+            // yaw angle error is small enough to allow us to enter fly home or descend phase
             if (GPS_distanceToHomeCm <= rescueState.intent.descentDistanceCm) {
-                rescueState.phase = RESCUE_DESCENT; // directly enter descend phase
+                rescueState.phase = RESCUE_DESCENT; // enter descend phase
                 rescueState.intent.yawAttenuator = 0.0f; // block yaw while descending
-                
             } else {
                 rescueState.phase = RESCUE_FLY_HOME; // enter fly home phase
             }
-            setTargetLocation(gpsSol.llh, false);  // update autopilot.c target location, with iTerm and D
-            rescueState.sensor.previousLocation = gpsSol.llh; // set previous location to same point to avoid large jump in pids
+            resetPositionControl(gpsSol.llh); // reset position hold target at current location
+            rescueState.sensor.targetLocation = gpsSol.llh; // set our point to current point
             rescueState.intent.secondsFailing = 0; // reset sanity timer for flight home
         }
         break;
