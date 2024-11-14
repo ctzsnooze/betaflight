@@ -306,6 +306,10 @@ void (posControlOnNewGpsData) (void)
             DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 5, lrintf(pidI * 10));
             DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 6, lrintf(pidD * 10));
             DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 7, lrintf(pidA * 10));
+
+            DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 4, lrintf(pidP * 10));
+            DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 5, lrintf(pidD * 10));
+            DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 6, lrintf(pidA * 10));
         }
     } // end for loop
 
