@@ -515,7 +515,7 @@ static void sensorUpdate(void)
     DEBUG_SET(DEBUG_ATTITUDE, 4, rescueState.sensor.velocityToHomeCmS); // velocity to home
 
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 0, GPS_distanceToHomeCm);
-    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 1, rescueState.intent.isCloseToHome); // all unused at present
+    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 1, rescueState.phase); // all unused at present
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 2, lrintf(rescueState.intent.latFactor * 100.0f)); // all unused at present
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 3, lrintf(rescueState.intent.lonFactor * 100.0f)); // all unused at present
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 4, DECIDEGREES_TO_DEGREES(GPS_directionToHome));
@@ -599,17 +599,16 @@ void descend(void)
 {
     // zero yaw authority stops yawing when overshooting home, is set once, before entry to descent phase
 
-    // adjust target velocity depending on proximity to home point
-    if (rescueState.intent.velocityAttenuator < 1.0f) { // acquire velocity over one second if entered directly
+    if (rescueState.intent.velocityAttenuator < 1.0f) { // acquire velocity over one second if not yet there
         rescueState.intent.velocityAttenuator += taskIntervalSeconds;
     }
+    static float proximityAttenuator = 1.0f; // used to reduce target velocity as we approach the home point
     if (newGpsData) {
-        const float proximityAttenuator = rescueState.intent.descentDistanceCm ? fminf(GPS_distanceToHomeCm / rescueState.intent.descentDistanceCm, 1.0f) : 0.0f;
-        rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * proximityAttenuator;
+        proximityAttenuator = rescueState.intent.descentDistanceCm ? fminf(GPS_distanceToHomeCm / rescueState.intent.descentDistanceCm, 1.0f) : 0.0f;
     }
-    rescueState.intent.targetVelocityCmS *= rescueState.intent.velocityAttenuator;
+    rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * proximityAttenuator * rescueState.intent.velocityAttenuator;
 
-    // adjustx the altitude step, considering the interval between altitude readings and the descent rate
+    // adjust the altitude step, considering the interval between altitude readings and the descent rate
     float altitudeStepCm = taskIntervalSeconds * gpsRescueConfig()->descendRate;
 
     // descend more slowly if the intended return home altitude is less than 20m
