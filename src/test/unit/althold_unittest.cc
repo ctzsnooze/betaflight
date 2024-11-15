@@ -54,7 +54,7 @@ extern "C" {
 
     bool failsafeIsActive(void) { return false; }
     timeUs_t currentTimeUs = 0;
-    bool isAltHoldActive();
+    bool isActive();
 }
 
 #include "unittest_macros.h"
@@ -67,34 +67,34 @@ uint32_t millis() {
 
 TEST(AltholdUnittest, altHoldTransitionsTest)
 {
-    updateAltHoldState(currentTimeUs);
-    EXPECT_EQ(isAltHoldActive(), false);
+    updateAltHold(currentTimeUs);
+    EXPECT_EQ(isActive(), false);
 
     flightModeFlags |= ALT_HOLD_MODE;
     millisRW = 42;
-    updateAltHoldState(currentTimeUs);
-    EXPECT_EQ(isAltHoldActive(), true);
+    updateAltHold(currentTimeUs);
+    EXPECT_EQ(isActive(), true);
 
     flightModeFlags ^= ALT_HOLD_MODE;
     millisRW = 56;
-    updateAltHoldState(currentTimeUs);
-    EXPECT_EQ(isAltHoldActive(), false);
+    updateAltHold(currentTimeUs);
+    EXPECT_EQ(isActive(), false);
 
     flightModeFlags |= ALT_HOLD_MODE;
     millisRW = 64;
-    updateAltHoldState(currentTimeUs);
-    EXPECT_EQ(isAltHoldActive(), true);
+    updateAltHold(currentTimeUs);
+    EXPECT_EQ(isActive(), true);
 }
 
 TEST(AltholdUnittest, altHoldTransitionsTestUnfinishedExitEnter)
 {
     altHoldInit();
-    EXPECT_EQ(isAltHoldActive(), false);
+    EXPECT_EQ(isActive(), false);
 
     flightModeFlags |= ALT_HOLD_MODE;
     millisRW = 42;
-    updateAltHoldState(currentTimeUs);
-    EXPECT_EQ(isAltHoldActive(), true);
+    updateAltHold(currentTimeUs);
+    EXPECT_EQ(isActive(), true);
 }
 
 // STUBS

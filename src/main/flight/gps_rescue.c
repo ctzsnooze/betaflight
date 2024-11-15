@@ -82,7 +82,6 @@ typedef struct {
     float targetVelocityCmS;
     float descentDistanceCm;
     int8_t secondsFailing;
-    float verticalVelocityMultiplier;
     float yawAttenuator;
     float velocityAttenuator;
     float proximityAttenuator;
@@ -201,8 +200,7 @@ static void rescueAttainPosition(void)
     /**
         Altitude (throttle) controller
     */
-    const float verticalVelocity = getAltitudeDerivative() * rescueState.intent.verticalVelocityMultiplier;
-    altitudeControl(rescueState.intent.targetAltitudeCm, taskIntervalSeconds, verticalVelocity, rescueState.intent.targetAltitudeStepCm);
+    altitudeControl(rescueState.intent.targetAltitudeCm, taskIntervalSeconds, rescueState.intent.targetAltitudeStepCm);
 
     /**
         Heading / yaw controller
@@ -595,25 +593,15 @@ void descend(void)
     }
     rescueState.intent.targetVelocityCmS = gpsRescueConfig()->groundSpeedCmS * rescueState.intent.proximityAttenuator * rescueState.intent.velocityAttenuator;
 
-    // adjust the altitude step, considering the interval between altitude readings and the descent rate
     float altitudeStepCm = taskIntervalSeconds * gpsRescueConfig()->descendRate;
 
-    // descend more slowly if the intended return home altitude is less than 20m
-    const float descentRateAttenuator = constrainf(rescueState.intent.returnAltitudeCm / 2000.0f, 0.25f, 1.0f);
-    altitudeStepCm *= descentRateAttenuator;
-    // slowest descent rate will be 1/4 of normal when we start descending at or below 5m above take-off point.
-    // otherwise a rescue initiated very low and close may not get all the way home
-
-    // descend faster while the quad is at higher altitudes
+    // descend faster while the quad is at higher altitudes, slower below 10m
     const float descentRateMultiplier = constrainf(rescueState.intent.targetAltitudeCm / 5000.0f, 0.0f, 1.0f);
-    altitudeStepCm *= 1.0f + (2.0f * descentRateMultiplier);
-    // maximum descent rate increase is 3x default above 50m, 2x above 25m, 1.2x at 5m, default by ground level
-
-    // also increase throttle D up to 2x in the descent phase when altitude descent rate is faster, for better control
-    rescueState.intent.verticalVelocityMultiplier = 1.0f + descentRateMultiplier;
+    altitudeStepCm *= 0.6f + (2.0f * descentRateMultiplier); 
+    // maximum descent rate increase is 2.6x default above 50m, 1.6x above 25m, 1.0x at 10m, 0.6x at ground level
 
     rescueState.intent.targetAltitudeStepCm = -altitudeStepCm;
-    rescueState.intent.targetAltitudeCm += rescueState.intent.targetAltitudeStepCm;
+    rescueState.intent.targetAltitudeCm -= altitudeStepCm;
 }
 
 void initialiseRescueValues (void)
@@ -629,7 +617,6 @@ void initialiseRescueValues (void)
     rescueState.intent.yawAttenuator = 0.0f; // no yaw in the climb
     rescueState.intent.velocityAttenuator = 0.0f; // control velocity acquisition
     rescueState.intent.targetVelocityCmS = 0.0f; // stop the quad immediately
-    rescueState.intent.verticalVelocityMultiplier = 1.0f;
     rescueState.intent.targetAltitudeStepCm = 0.0f;
     rescueState.sensor.velocityToHomeCmS = 0.0f;
     rescueState.intent.latFactor = 0.0f;

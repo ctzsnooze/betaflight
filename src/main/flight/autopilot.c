@@ -31,16 +31,17 @@
 
 #include "flight/imu.h"
 #include "flight/position.h"
+#include "flight/alt_hold.h" // only to get ALTHOLD_TASK_RATE_HZ - maybe ALTHOLD_TASK_RATE_HZ and all 'client' task rates should be in position.h
 #include "rx/rx.h"
 #include "sensors/gyro.h"
 
 #include "autopilot.h"
 
-#define ALTITUDE_P_SCALE  0.01f
+#define ALTITUDE_P_SCALE  0.01f // slightly less P because we are adding a highpass element
 #define ALTITUDE_I_SCALE  0.003f
 #define ALTITUDE_D_SCALE  0.01f
-#define ALTITUDE_F_SCALE  0.01f
-#define POSITION_P_SCALE  0.0012f
+#define ALTITUDE_F_SCALE  0.008f // slightly less F because highpass P is earlier
+#define POSITION_P_SCALE  0.001f
 #define POSITION_I_SCALE  0.0001f
 #define POSITION_D_SCALE  0.0015f
 #define POSITION_A_SCALE  0.0008f
@@ -51,6 +52,7 @@ static pidCoefficient_t positionPidCoeffs;
 
 static float altitudeI = 0.0f;
 static float throttleOut = 0.0f;
+pt1Filter_t altitudePHpf;
 
 typedef struct {
     bool isStopping;
@@ -99,36 +101,15 @@ static posHoldState posHold = {
 static gpsLocation_t currentTargetLocation = {0, 0, 0};
 float autopilotAngle[RP_AXIS_COUNT];
 
-void resetPositionControlEFParams(earthFrame_t *efAxis)
-{
-    // at start only
-    pt1FilterInit(&efAxis->velocityLpf, posHold.pt1Gain); // Clear and initialise the filters
-    pt1FilterInit(&efAxis->accelerationLpf, posHold.pt1Gain);
-    efAxis->isStopping = true; // Enter starting 'phase'
-    efAxis->integral = 0.0f;
+void initializeEfAxisFilters(earthFrame_t *efAxis, float filterGain) {
+    pt1FilterInit(&efAxis->velocityLpf, filterGain);
+    pt1FilterInit(&efAxis->accelerationLpf, filterGain);
 }
 
 void resetPt3UpsampleFilters(void)
 {
     pt3FilterInit(&posHold.upsample[AI_ROLL], posHold.upsampleCutoff);
     pt3FilterInit(&posHold.upsample[AI_PITCH], posHold.upsampleCutoff);
-}
-
-void resetPositionControl(gpsLocation_t initialTargetLocation)
-{
-    // from pos_hold.c when initiating position hold at target location
-    currentTargetLocation = initialTargetLocation;
-    posHold.sticksActive = false;
-    // set sanity check distance according to groundspeed at start
-    posHold.sanityCheckDistance = gpsSol.groundSpeed > 500 ? gpsSol.groundSpeed * 2.0f : 1000.0f;
-    resetPositionControlEFParams(&posHold.efAxis[EW]); // includes reset of PT1 filters
-    resetPositionControlEFParams(&posHold.efAxis[NS]);
-    resetPt3UpsampleFilters(); // clear anything from previous iteration
-}
-
-void initializeEfAxisFilters(earthFrame_t *efAxis, float filterGain) {
-    pt1FilterInit(&efAxis->velocityLpf, filterGain);
-    pt1FilterInit(&efAxis->accelerationLpf, filterGain);
 }
 
 void autopilotInit(const autopilotConfig_t *config)
@@ -151,16 +132,23 @@ void autopilotInit(const autopilotConfig_t *config)
     posHold.pt1Gain = pt1FilterGain(posHold.pt1Cutoff, 0.1f); // assume 10Hz GPS connection at start
     initializeEfAxisFilters(&posHold.efAxis[EW], posHold.pt1Gain);
     initializeEfAxisFilters(&posHold.efAxis[NS], posHold.pt1Gain);
+
+    const float altPHpfGain = pt1FilterGain(0.2f, HZ_TO_INTERVAL(ALTHOLD_TASK_RATE_HZ)); // Approx 1s time constant
+    pt1FilterInit(&altitudePHpf, altPHpfGain);
 }
 
-void resetAltitudeControl (void) {
+void resetAltitudeControl(void) {
     altitudeI = 0.0f;
 }
 
-void altitudeControl(float targetAltitudeCm, float taskIntervalS, float verticalVelocity, float targetAltitudeStep)
+void altitudeControl(float targetAltitudeCm, float taskIntervalS, float targetAltitudeStep)
 {
     const float altitudeErrorCm = targetAltitudeCm - getAltitudeCm();
-    const float altitudeP = altitudeErrorCm * altitudePidCoeffs.Kp;
+    float altitudeP = altitudeErrorCm * altitudePidCoeffs.Kp;
+
+    // add highpass of P to compensate for lag; D isn't quite the same
+    const float highpassAltitudeP = altitudeP - pt1FilterApply(&altitudePHpf, altitudeP);
+    altitudeP += highpassAltitudeP;
 
     // reduce the iTerm gain for errors greater than 200cm (2m), otherwise it winds up too much
     const float itermRelax = (fabsf(altitudeErrorCm) < 200.0f) ? 1.0f : 0.1f;
@@ -168,7 +156,17 @@ void altitudeControl(float targetAltitudeCm, float taskIntervalS, float vertical
     // limit iTerm to not more than 200 throttle units
     altitudeI = constrainf(altitudeI, -200.0f, 200.0f);
 
-    const float altitudeD = verticalVelocity * altitudePidCoeffs.Kd;
+    // increase D when velocity is high, typically when initiating hold at high vertical speeds
+    // 1.0 when less than 5 m/s, 2x at 10m/s, 2.5 at 20 m/s, 2.8 at 50 m/s, asymptotes towards max 3.0.
+    float dBoost = 1.0f;
+    const float startValue = 500.0f; // velocity in cm/s at which D should start to increase
+    const float altDeriv = fabsf(getAltitudeDerivative());
+    if (altDeriv > startValue) {
+        const float ratio = altDeriv / startValue;
+        dBoost = (3.0f * ratio - 2.0f) / ratio;
+    }
+
+    const float altitudeD = getAltitudeDerivative() * dBoost * altitudePidCoeffs.Kd;
 
     const float altitudeF = targetAltitudeStep * altitudePidCoeffs.Kf;
 
@@ -195,6 +193,27 @@ void altitudeControl(float targetAltitudeCm, float taskIntervalS, float vertical
     DEBUG_SET(DEBUG_AUTOPILOT_ALTITUDE, 5, lrintf(altitudeI));
     DEBUG_SET(DEBUG_AUTOPILOT_ALTITUDE, 6, lrintf(-altitudeD));
     DEBUG_SET(DEBUG_AUTOPILOT_ALTITUDE, 7, lrintf(altitudeF));
+}
+
+void resetPositionControlEFParams(earthFrame_t *efAxis)
+{
+    // at start only
+    pt1FilterInit(&efAxis->velocityLpf, posHold.pt1Gain); // Clear and initialise the filters
+    pt1FilterInit(&efAxis->accelerationLpf, posHold.pt1Gain);
+    efAxis->isStopping = true; // Enter starting 'phase'
+    efAxis->integral = 0.0f;
+}
+
+void resetPositionControl(gpsLocation_t initialTargetLocation)
+{
+    // from pos_hold.c when initiating position hold at target location
+    currentTargetLocation = initialTargetLocation;
+    posHold.sticksActive = false;
+    // set sanity check distance according to groundspeed at start
+    posHold.sanityCheckDistance = gpsSol.groundSpeed > 500 ? gpsSol.groundSpeed * 2.0f : 1000.0f;
+    resetPositionControlEFParams(&posHold.efAxis[EW]); // includes reset of PT1 filters
+    resetPositionControlEFParams(&posHold.efAxis[NS]);
+    resetPt3UpsampleFilters(); // clear anything from previous iteration
 }
 
 void setSticksActiveStatus(bool areSticksActive)
