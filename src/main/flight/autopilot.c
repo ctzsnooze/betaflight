@@ -364,11 +364,10 @@ void posControlOutput (void)
     }
 }
 
-static uint16_t previousGpsStamp = 0;
 bool positionControl(void) 
 {
-    if (getGpsStamp() != previousGpsStamp) {
-        previousGpsStamp = getGpsStamp();
+    static uint16_t gpsStamp = 0;
+    if (gpsHasNewData(&gpsStamp)) {
         posControlOnNewGpsData();
     }
     posControlOutput();

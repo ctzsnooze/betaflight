@@ -118,7 +118,7 @@ extern "C" {
 
     float rcCommand[4];
 
-    bool isNewGPSDataAvailable(uint16_t* gpsStamp) {
+    bool gpsHasNewData(uint16_t* gpsStamp) {
         UNUSED(*gpsStamp);
         return true;
     }

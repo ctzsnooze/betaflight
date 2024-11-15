@@ -1180,7 +1180,7 @@ extern "C" {
     void getRcDeflectionAbs(void) {}
     uint32_t getCpuPercentageLate(void) { return 0; }
     bool crashFlipSuccessful(void) { return false; }
-    
+
     void GPS_distance_cm_bearing(const gpsLocation_t *from, const gpsLocation_t *to, bool dist3d, uint32_t *dist, int32_t *bearing)
     {
        UNUSED(from);
@@ -1189,7 +1189,8 @@ extern "C" {
        UNUSED(dist);
        UNUSED(bearing);
     }
-void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pEWDist, float *pNSDist)
+
+    void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pEWDist, float *pNSDist)
     {
        UNUSED(from);
        UNUSED(to);
@@ -1202,7 +1203,11 @@ void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pE
        return 0.0f;
     }
 
+    bool gpsHasNewData(uint16_t* gpsStamp) {
+        UNUSED(*gpsStamp);
+        return true;
+    }
+
     bool canUseGPSHeading;
-    uint16_t getGpsStamp(void){ return 0; }
     float getGpsCosLat(void) { return 1.0f; }
 }

@@ -116,6 +116,7 @@ typedef struct {
 static const float taskIntervalSeconds = HZ_TO_INTERVAL(TASK_GPS_RESCUE_RATE_HZ); // i.e. 0.01 s
 static float rescueYaw;
 static bool disableMag = false;
+static bool newGpsData = false;
 
 rescueState_s rescueState;
 
@@ -126,19 +127,6 @@ void gpsRescueInit(void)
     rescueState.intent.disarmThreshold = gpsRescueConfig()->disarmThreshold * 0.1f;
     rescueState.intent.descentDistanceCm = gpsRescueConfig()->descentDistanceM * 100.0f;
 }
-
-// check for new GPS Data
-static bool newGpsData = false;
-static uint16_t previousGpsStamp = 0;
-static void gpsRescueNewGpsData(void)
-{
-    if (getGpsStamp() != previousGpsStamp) {
-        previousGpsStamp = getGpsStamp();
-        newGpsData = true;
-    } else {
-        newGpsData = false;
-    }
-} 
 
 static void rescueStart(void)
 {
@@ -659,10 +647,11 @@ void gpsRescueUpdate(void)
         rescueAttainPosition(); // Initialise basic parameters when a Rescue starts (can't initialise sensor data reliably)
         performSanityChecks(); // Initialises sanity check values when a Rescue starts
     }
-
     // Will now be in RESCUE_INITIALIZE mode, if just entered Rescue while IDLE, otherwise stays IDLE
 
-    gpsRescueNewGpsData(); // if new GPS data, set newGpsData true
+    static uint16_t gpsStamp = 0;
+    newGpsData = gpsHasNewData(&gpsStamp);
+
     sensorUpdate(); // always get latest GPS and Altitude data, update ascend and descend rates
 
     static bool returnAltitudeLow = true;
