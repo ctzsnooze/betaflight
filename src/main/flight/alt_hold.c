@@ -148,7 +148,7 @@ void updateAltHold(timeUs_t currentTimeUs) {
     }
 }
 
-bool isActive(void) {
+bool isAltHoldActive(void) {
     return altHold.isActive;
 }
 #endif

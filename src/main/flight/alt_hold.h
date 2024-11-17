@@ -26,6 +26,6 @@
 
 void altHoldInit(void);
 void updateAltHold(timeUs_t currentTimeUs);
-bool isActive(void);
+bool isAltHoldActive(void);
 
 #endif
