@@ -37,10 +37,10 @@
 
 #include "autopilot.h"
 
-#define ALTITUDE_P_SCALE  0.01f // slightly less P because we are adding a highpass element
-#define ALTITUDE_I_SCALE  0.003f
-#define ALTITUDE_D_SCALE  0.01f
-#define ALTITUDE_F_SCALE  0.008f // slightly less F because highpass P is earlier
+#define ALTITUDE_P_SCALE  0.005f // slightly less P because we are adding a highpass element
+#define ALTITUDE_I_SCALE  0.00015f
+#define ALTITUDE_D_SCALE  0.005f
+#define ALTITUDE_F_SCALE  0.004f // slightly less F because highpass P is earlier
 #define POSITION_P_SCALE  0.001f
 #define POSITION_I_SCALE  0.0001f
 #define POSITION_D_SCALE  0.0015f
