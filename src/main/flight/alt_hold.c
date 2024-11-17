@@ -60,7 +60,7 @@ void altHoldInit(void)
     altHold.isActive = false;
     altHold.deadband = altHoldConfig()->alt_hold_deadband / 100.0f;
     altHold.allowStickAdjustment = altHoldConfig()->alt_hold_deadband;
-    altHold.maxVelocity = altHoldConfig()->alt_hold_adjust_rate * 10.0f; // 50 in CLI means 500cm/s
+    altHold.maxVelocity = altHoldConfig()->alt_hold_throttle_rate * 10.0f; // 50 in CLI means 500cm/s
     altHoldReset();
 }
 
@@ -131,7 +131,7 @@ void altHoldUpdateTargetAltitude(void)
 void altHoldUpdate(void)
 {
     // check if the user has changed the target altitude using sticks
-    if (altHoldConfig()->alt_hold_adjust_rate) {
+    if (altHoldConfig()->alt_hold_throttle_rate) {
         altHoldUpdateTargetAltitude();
     }
     altitudeControl(altHold.targetAltitudeCm, taskIntervalSeconds, altHold.targetVelocity);
