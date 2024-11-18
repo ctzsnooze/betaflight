@@ -227,8 +227,8 @@ STATIC_UNIT_TESTED void imuMahonyAHRSupdate(float dt,
     ey += rMat.m[Z][Y] * (headingErrCog + headingErrMag);
     ez += rMat.m[Z][Z] * (headingErrCog + headingErrMag);
 
-    DEBUG_SET(DEBUG_ATTITUDE, 3, (headingErrCog * 100));
-    DEBUG_SET(DEBUG_ATTITUDE, 7, lrintf(dcmKpGain * 100.0f));
+//    DEBUG_SET(DEBUG_ATTITUDE, 3, (headingErrCog * 100));
+//    DEBUG_SET(DEBUG_ATTITUDE, 7, lrintf(headingErrCog * 100.0f));
 
     // Use measured acceleration vector
     float recipAccNorm = sq(ax) + sq(ay) + sq(az);
@@ -398,7 +398,7 @@ static float imuCalcGroundspeedGain(float dt)
     // - heavily average GPS heading values at low speed, since they are random, almost
     // - respond more quickly at higher speeds.
     // GPS typically returns quite good heading estimates at or above 0.5- 1.0 m/s, quite solid by 2m/s
-    // groundspeedGain will be 0 at 0.0m/s, rising slowly towards 1.0 at 1.0 m/s, and reaching max of 10.0 at 10m/s
+    // speedBasedGain will be 0 at 0.0m/s, rising slowly towards 1.0 at 1.0 m/s, and reaching max of 10.0 at 10m/s
     const float speedRatio = (float)gpsSol.groundSpeed / GPS_COG_MIN_GROUNDSPEED;
     float speedBasedGain = speedRatio > 1.0f ? fminf(speedRatio, 10.0f) : sq(speedRatio);
 
@@ -427,7 +427,7 @@ static float imuCalcGroundspeedGain(float dt)
     // need to test if anything special is needed for pitch with wings, for now do nothing.
     float pitchSuppression = 1.0f;
     if (!isWing) {
-        const float pitchAngle = attitude.values.pitch * .1f; // degrees, negative is backwards
+        const float pitchAngle = attitude.values.pitch * 0.1f; // degrees, negative is backwards
         pitchSuppression = pitchAngle / 45.0f; // 1.0 at 45 degrees, 2.0 at 90 degrees
         pitchSuppression = (pitchSuppression >= 0) ? pitchSuppression : 0.0f; // zero if flat or pitched backwards
     }
@@ -678,7 +678,7 @@ static void imuCalculateEstimatedAttitude(timeUs_t currentTimeUs)
                 groundspeedGain = imuCalcGroundspeedGain(dt);
             }
 
-            DEBUG_SET(DEBUG_ATTITUDE, 2, lrintf(groundspeedGain * 100.0f));
+//            DEBUG_SET(DEBUG_ATTITUDE, 2, lrintf(groundspeedGain * 100.0f));
 
             const float courseOverGround = DECIDEGREES_TO_RADIANS(gpsSol.groundCourse);
             const float imuCourseError = imuCalcCourseErr(courseOverGround);
@@ -760,8 +760,8 @@ void imuUpdateAttitude(timeUs_t currentTimeUs)
         schedulerIgnoreTaskStateTime();
     }
 
-    DEBUG_SET(DEBUG_ATTITUDE, 0, attitude.values.roll);
-    DEBUG_SET(DEBUG_ATTITUDE, 1, attitude.values.pitch);
+//    DEBUG_SET(DEBUG_ATTITUDE, 0, attitude.values.roll);
+//    DEBUG_SET(DEBUG_ATTITUDE, 1, attitude.values.pitch);
 }
 #endif // USE_ACC
 

@@ -206,42 +206,40 @@ static void rescueAttainPosition(void)
     /**
         Heading / yaw controller
     */
-    // simple yaw P controller with roll mixed in.
     // attitude.values.yaw is set by imuCalculateEstimatedAttitude() and is updated from GPS while groundspeed exceeds 2 m/s
     // below 2m/s groundspeed, the IMU uses gyro to estimate yaw attitude change from previous values
-    // above 2m/s, GPS course over ground us ysed to 'correct' the IMU heading
+    // above 2m/s, GPS course over ground is used to 'correct' the IMU heading
     // if the course over ground, due to wind or pre-exiting movement, is different from the attitude of the quad, the GPS correction will be less accurate
-    // the craft should not return much less than 5m/s during the rescue or the GPS corrections may be inaccurate.
+    // the craft should not return at much less than 5m/s during the rescue or the GPS corrections may be inaccurate.
     // the faster the return speed, the more accurate the IMU will be, but the consequences of IMU error at the start are greater
     // A compass (magnetometer) is vital for accurate GPS rescue at slow speeds, but must be calibrated and validated
-    // WARNING:  Some GPS units give false Home values!  Always check the arrow points to home on leaving home.
+
+    // simple yaw P controller with roll mixed in.
     rescueYaw = rescueState.sensor.errorAngleDeg * gpsRescueConfig()->yawP * rescueState.intent.yawAttenuator / 10.0f;
     rescueYaw = constrainf(rescueYaw, -GPS_RESCUE_MAX_YAW_RATE, GPS_RESCUE_MAX_YAW_RATE);
-    // rescueYaw is the yaw rate in deg/s to correct the heading error
 
     rescueYaw *= GET_DIRECTION(rcControlsConfig()->yaw_control_reversed);
     // rescueYaw is the yaw rate in deg/s to correct the heading error
-
-    DEBUG_SET(DEBUG_GPS_RESCUE_HEADING, 7, rescueYaw);                  // the yaw rate in deg/s to correct a yaw error
+    
+    DEBUG_SET(DEBUG_GPS_RESCUE_HEADING, 7, rescueYaw);
 
     /*
         Pitch / velocity controller
     */
+    // move target location along a path at set velocity
     if (newGpsData) {
         if (rescueState.intent.targetVelocityCmS > 0.0f) {
-            // target location moves along a path at set velocity
             const float distanceToMove = rescueState.intent.targetVelocityCmS * rescueState.sensor.gpsDataIntervalSeconds;
-            setLatLongSteps(); // update latitude and longitude step from current location to home
+            setLatLongSteps(); // update latitude and longitude step from current location to home at current target velocity
             const int32_t latStep = distanceToMove * rescueState.intent.latFactor;
             const int32_t lonStep = distanceToMove * rescueState.intent.lonFactor;
             moveTargetLocation(latStep, lonStep); // send steps to update the target location in autopilot.c 
         }
         posControlOnNewGpsData(); // run the autopilot function that moves the aircraft to the target location
     }
+    posControlOutput(); // at gps_rescue task rate, calculate and upsample the setpoints for pid.c every iteration
 
-    posControlOutput(); // calculate and upsample the setpoints for pid.c every iteration
-
-    DEBUG_SET(DEBUG_GPS_RESCUE_TRACKING, 1, lrintf(rescueState.intent.targetVelocityCmS)); // target velocity to home
+    DEBUG_SET(DEBUG_GPS_RESCUE_TRACKING, 1, lrintf(rescueState.intent.targetVelocityCmS));
 }
 
 static void performSanityChecks(void)
@@ -415,6 +413,7 @@ static void sensorUpdate(void)
 
     // assess relationship between aircraft heading and GPS ground course
     // to determine which heading to use in case of IMU disorientation
+
     float headingErrorDeg = aircraftHeadingDeg - groundCourseDeg;
     // normalise to -180 ... + 180
     if (headingErrorDeg > 180) {
@@ -428,9 +427,9 @@ static void sensorUpdate(void)
     // 1 = 90 degrees off
     // 2 = 180 degrees off
 
-    float headingSpeedFactor = gpsRescueConfig()->groundSpeedCmS ? (gpsSol.groundSpeed / gpsRescueConfig()->groundSpeedCmS) : 0.0f;
-    headingSpeedFactor = fmaxf(headingSpeedFactor - 1.0f, 0.0f);
-    // 0.0 until target groundspeed, 1.0 at double target groundspeed, 2.0 at three times
+    float headingSpeedFactor = gpsRescueConfig()->groundSpeedCmS ? (1.0f / gpsRescueConfig()->groundSpeedCmS) *  gpsSol.groundSpeed : 0.0f;
+    headingSpeedFactor = fminf(headingSpeedFactor, 4.0f);
+    // 0 when still, 1.0 at target groundspeed, max of 4.0 at 4x target groundspeed
     // above zero strongly implies IMU error or strong drift
 
     headingVsCogFactor *= headingSpeedFactor; // zero is well aligned at inside normal speed
@@ -438,28 +437,17 @@ static void sensorUpdate(void)
     // 4 at double target speed and 180 error
     // note : this factor may be useful for cogYawGain and to suppress Roll in IMU error situations
 
-    const float headingVsCogFader = fminf(headingVsCogFactor, 1.0f);
+    const float headingVsCogFader = fminf(headingVsCogFactor * 0.5f, 1.0f);
 
-    // when closer to 0, use GPS groundcourse for heading, since there must be drift or the IMU is incorrect or groundspeed is low
+    // when closer to 0, use aircraftHeadingDeg, when 1 or more, use groundCourse
     float headingToUse = aircraftHeadingDeg * (1.0f - headingVsCogFader) + groundCourseDeg * headingVsCogFader;
     // prefer the IMU heading when aligned with groundcourse, or moving slowly, otherwise use groundcourse
 
-
-// don't think this is needed
-
-//     if (headingToUse < 0) {
-//         headingToUse += 360;
-//     }
-//     if (headingToUse > 360) {
-//         headingToUse -= 360;
-//     }
-
-
-
     // for now, do nothing with headingToUse
-    //    rescueState.sensor.errorAngleDeg = (rescueState.phase == RESCUE_FLY_HOME) ? (headingToUse - bearingToHomeDeg) : aircraftHeadingDeg - bearingToHomeDeg;
+    //    headingToUse = (rescueState.phase == RESCUE_FLY_HOME) ? headingToUse : aircraftHeadingDeg;
+    //    rescueState.sensor.errorAngleDeg = headingToUse - bearingToHomeDeg;
 
-    rescueState.sensor.errorAngleDeg = aircraftHeadingDeg - bearingToHomeDeg;
+    rescueState.sensor.errorAngleDeg = aircraftHeadingDeg - bearingToHomeDeg; // to determine when craft can fly home
     // normalise to -180 ... + 180
     if (rescueState.sensor.errorAngleDeg <= -180) {
         rescueState.sensor.errorAngleDeg += 360;
@@ -467,12 +455,18 @@ static void sensorUpdate(void)
         rescueState.sensor.errorAngleDeg -= 360;
     }
 
+    const float pitchForwardFactor = (attitude.values.pitch > 0.0f) ? fminf(attitude.values.pitch / 200.0f, 2.0f) : 0.0f;
+    // 0 when flat or pitched back, 1.0 at 20 degrees, 3.0 at 60 degrees
+
+    headingVsCogFactor *= pitchForwardFactor;
+
+    // calculate imuYawCogGain to correct the IMU if disoriented
+
     static float prevDistanceToHomeCm = 0.0f;
     if (newGpsData) {
         rescueState.sensor.gpsDataIntervalSeconds = getGpsDataIntervalSeconds();
         // Range from 10ms (100hz) to 1000ms (1Hz). Intended to cover common GPS data rates and exclude unusual values.
 
-        // *** all the following is now only needed to calculate imuYawCogGain for GPS-only rescues
         rescueState.sensor.velocityToHomeCmS = ((prevDistanceToHomeCm - GPS_distanceToHomeCm) / rescueState.sensor.gpsDataIntervalSeconds);
         prevDistanceToHomeCm = GPS_distanceToHomeCm;
         // positive = towards home.  First value is useless since prevDistanceToHomeCm was zero.
@@ -482,15 +476,11 @@ static void sensorUpdate(void)
         // iTerm accumulates and PIDs pitch progressively further forward so velocity increases
         // we need to detect this and encourage the IMU to correct.
         if (gpsRescueConfig()->groundSpeedCmS) {
-            const float sensitivity = gpsRescueConfig()->groundSpeedCmS;
-            const float groundspeedErrorRatio = fabsf(gpsSol.groundSpeed - rescueState.sensor.velocityToHomeCmS) / sensitivity;
+            const float sensitivity = 1.0f / gpsRescueConfig()->groundSpeedCmS;
+            const float groundspeedErrorRatio = fabsf(gpsSol.groundSpeed - rescueState.sensor.velocityToHomeCmS) * sensitivity;
             // 0 if groundspeed = velocity to home, or both are zero, meaning OK
             // 1 if forward velocity is zero but sideways speed equal to return speed
             // 2 if moving backwards at expected return speed, 4 if moving backwards at 2* expected return speed, etc
-
-            const float pitchForwardFactor = (attitude.values.pitch > 0.0f) ? fminf(attitude.values.pitch / 30.0f, 2.0f) : 0.0f;
-            // 0 when flat or pitched back, 1.0 at 30 degrees, 2.0 at 60 degrees
-
             if (rescueState.phase == RESCUE_FLY_HOME) {
                 rescueState.sensor.imuYawCogGain = pitchForwardFactor + fminf(groundspeedErrorRatio, 3.5f);
                 // imuYawCogGain will be more positive at higher pitch angles and higher groundspeed errors
@@ -499,12 +489,18 @@ static void sensorUpdate(void)
                 rescueState.sensor.imuYawCogGain = 0.0f;
                 // accept whatever IMU state we had, until fly home phase
             }
-            DEBUG_SET(DEBUG_ATTITUDE, 5, lrintf(groundspeedErrorRatio * 100));
-            DEBUG_SET(DEBUG_ATTITUDE, 6, lrintf(rescueState.sensor.imuYawCogGain * 10));
+            DEBUG_SET(DEBUG_ATTITUDE, 3, lrintf(groundspeedErrorRatio * 100));
         }
     }
 
-    DEBUG_SET(DEBUG_ATTITUDE, 4, rescueState.sensor.velocityToHomeCmS); // velocity to home
+    DEBUG_SET(DEBUG_ATTITUDE, 0, lrintf(aircraftHeadingDeg));
+    DEBUG_SET(DEBUG_ATTITUDE, 1, lrintf(headingToUse));
+    DEBUG_SET(DEBUG_ATTITUDE, 2, lrintf(rescueState.sensor.velocityToHomeCmS));
+
+    DEBUG_SET(DEBUG_ATTITUDE, 4, lrintf(pitchForwardFactor * 100.0f));
+    DEBUG_SET(DEBUG_ATTITUDE, 5, lrintf(headingSpeedFactor * 100.0f));
+    DEBUG_SET(DEBUG_ATTITUDE, 6, lrintf(headingVsCogFactor * 100.0f));
+    DEBUG_SET(DEBUG_ATTITUDE, 7, lrintf(rescueState.sensor.imuYawCogGain * 100.0f));
 
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 0, lrintf(rescueState.intent.targetVelocityCmS)); // target velocity to home
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 1, lrintf(rescueState.sensor.velocityToHomeCmS)); // target velocity to home
