@@ -625,6 +625,7 @@ void tryArm(void)
         if (featureIsEnabled(FEATURE_GPS)) {
             GPS_reset_home_position();
             canUseGPSHeading = false; // block use of GPS Heading in position hold after each arm, until quad can set IMU to GPS COG
+            // note: temporary, for testing IMU reset each taekoff
             if (STATE(GPS_FIX) && gpsSol.numSat >= gpsRescueConfig()->minSats) {
                 beeper(BEEPER_ARMING_GPS_FIX);
             } else {

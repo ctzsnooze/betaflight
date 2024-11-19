@@ -369,7 +369,7 @@ void (posControlOnNewGpsData) (void)
     }
 }
 
-void posControlOutput (void)
+void posControlOutput(void)
 {
     // ** Final output to pid.c Angle Mode at 100Hz with primitive upsampling**
     autopilotAngle[AI_ROLL] = pt3FilterApply(&ap.upsampleBF[AI_ROLL], ap.pidSumBF[AI_ROLL]);
@@ -378,8 +378,8 @@ void posControlOutput (void)
 
     if (gyroConfig()->gyro_filter_debug_axis == FD_ROLL) {
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 1, lrintf(ap.efAxis[lon].distance));    // cm
-        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 2, lrintf(ap.efAxis[lon].pidSum * 10)); // deg
-        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 3, lrintf(autopilotAngle[AI_ROLL] * 10));   // deg
+        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 2, lrintf(ap.efAxis[lon].pidSum * 10));    // pidSum in deg
+        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 3, lrintf(autopilotAngle[AI_ROLL] * 10));  // Angle in deg
     } else {
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 1, lrintf(ap.efAxis[lat].distance));
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 2, lrintf(ap.efAxis[lat].pidSum * 10));
@@ -401,17 +401,6 @@ bool positionControl(void)
         return false;
     }
     return true;
-}
-
-void apVelocityControl(float targetVelocityCmS)
-{
-    // ultra basic DI velocity controller, intended to pitch forward at a set velocity, needs to be checked
-    const float velocityError = targetVelocityCmS - gpsSol.groundSpeed;
-    const float velocityD = velocityError * positionPidCoeffs.Kd;
-    ap.velocityI += velocityError * positionPidCoeffs.Ki * getGpsDataIntervalSeconds();
-    const float velocityPidSum = velocityD + ap.velocityI;
-    ap.pidSumBF[AI_ROLL] = 0.0f;
-    ap.pidSumBF[AI_PITCH] = velocityPidSum;
 }
 
 bool isBelowLandingAltitude(void)
