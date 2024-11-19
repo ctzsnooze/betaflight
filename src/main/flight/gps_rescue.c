@@ -514,7 +514,7 @@ static void sensorUpdate(void)
     DEBUG_SET(DEBUG_ATTITUDE, 4, lrintf(pitchForwardFactor * 100.0f));
     DEBUG_SET(DEBUG_ATTITUDE, 5, lrintf(headingSpeedFactor * 100.0f));
     DEBUG_SET(DEBUG_ATTITUDE, 6, lrintf(headingVsCogFactor * 100.0f));
-    DEBUG_SET(DEBUG_ATTITUDE, 7, lrintf(rescueState.sensor.imuYawCogGain * 100.0f));
+    DEBUG_SET(DEBUG_ATTITUDE, 7, (uint16_t)(rescueState.intent.orientIMU));
 
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 0, lrintf(rescueState.intent.targetVelocityCmS)); // target velocity to home
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 1, lrintf(rescueState.sensor.velocityToHomeCmS)); // target velocity to home

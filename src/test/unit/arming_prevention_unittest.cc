@@ -1163,12 +1163,12 @@ extern "C" {
        UNUSED(bearing);
     }
 
-    void GPS_latLongVectors(const gpsLocation_t *from, const gpsLocation_t *to, float *pEWDist, float *pNSDist)
+    void GPS_latLongVectors(const gpsLocation_t *from, const gpsLocation_t *to, float *pNSDist, float *pEWDist)
     {
        UNUSED(from);
        UNUSED(to);
-       UNUSED(pEWDist);
        UNUSED(pNSDist);
+       UNUSED(pEWDist);
     }
 
     float vector2Norm(const vector2_t *v) {

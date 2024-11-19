@@ -391,12 +391,12 @@ void onGpsNewData(void);
 void GPS_reset_home_position(void);
 void GPS_calc_longitude_scaling(int32_t lat);
 void GPS_distance_cm_bearing(const gpsLocation_t *from, const gpsLocation_t *to, bool dist3d, uint32_t *dist, int32_t *bearing);
-void GPS_latLongVectors(const gpsLocation_t *from, const gpsLocation_t *to, float *pEWDist, float *pNSDist);
-float getGpsCosLat(void);
-
+void GPS_latLongVectors(const gpsLocation_t *from, const gpsLocation_t *to, float *pNSDist, float *pEWDist);
 void gpsSetFixState(bool state);
+
+bool gpsHasNewData(uint16_t *stamp);
 float getGpsDataIntervalSeconds(void);  // range 0.05 - 2.5s
 float getGpsDataFrequencyHz(void);      // range 20Hz - 0.4Hz
-bool gpsHasNewData(uint16_t *stamp);
+float getGpsCosLat(void);
 
 baudRate_e getGpsPortActualBaudRateIndex(void);
