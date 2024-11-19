@@ -54,6 +54,7 @@
 
 #include "io/gps.h"
 
+#include "pg/autopilot.h"
 #include "pg/pg.h"
 #include "pg/pg_ids.h"
 

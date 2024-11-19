@@ -32,7 +32,6 @@ extern "C" {
     #include "fc/runtime_config.h"
 
     #include "flight/alt_hold.h"
-    #include "flight/autopilot.h"
     #include "flight/failsafe.h"
     #include "flight/imu.h"
     #include "flight/pid.h"
@@ -41,6 +40,9 @@ extern "C" {
     #include "io/gps.h"
 
     #include "rx/rx.h"
+
+    #include "pg/alt_hold.h"
+    #include "pg/autopilot.h"
 
     #include "sensors/acceleration.h"
     #include "sensors/gyro.h"
@@ -114,6 +116,7 @@ extern "C" {
     float getAltitudeDerivative(void) {return 0.0f;}
     float getCosTiltAngle(void) { return 0.0f; }
     float getGpsDataIntervalSeconds(void) { return 0.01f; }//    gpsSolutionData_t gpsSol;
+    float getGpsDataFrequencyHz(void) { return 10.0f; }
     uint16_t getGpsStamp(void){ return 0; }
 
     float rcCommand[4];
@@ -128,7 +131,7 @@ extern "C" {
        return 0.0f;
     }
 
-void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pEWDist, float *pNSDist)
+void GPS_latLongVectors(const gpsLocation_t *from, const gpsLocation_t *to, float *pEWDist, float *pNSDist)
     {
        UNUSED(from);
        UNUSED(to);

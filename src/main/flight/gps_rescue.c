@@ -46,6 +46,7 @@
 
 #include "io/gps.h"
 #include "rx/rx.h"
+#include "pg/autopilot.h"
 #include "sensors/acceleration.h"
 #include "sensors/compass.h"
 
@@ -191,7 +192,7 @@ static void rescueAttainPosition(void)
         }
         // initialise the required autopilot functions
         resetAltitudeControl();
-        resetPositionControl(gpsSol.llh); // enables position hold at current location with hard stop
+        resetPositionControl(&gpsSol.llh); // enables position hold at current location with hard stop
         return;
      default:
         break;
@@ -399,6 +400,15 @@ static void sensorUpdate(void)
 {
     rescueState.sensor.healthy = gpsIsHealthy();
 
+    static float prevDistanceToHomeCm = 0.0f;
+    if (newGpsData) {
+        rescueState.sensor.gpsDataIntervalSeconds = getGpsDataIntervalSeconds(); // Range from 50ms (20hz) to 2500ms (0.4Hz)
+        rescueState.sensor.velocityToHomeCmS = ((prevDistanceToHomeCm - GPS_distanceToHomeCm) * getGpsDataFrequencyHz());
+        prevDistanceToHomeCm = GPS_distanceToHomeCm;
+        // positive = towards home.  First value is useless since prevDistanceToHomeCm was zero.
+    }
+
+    // ** heading values **
     const float bearingToHomeDeg = DECIDEGREES_TO_DEGREES(GPS_directionToHome); // 0 to 360
     const float aircraftHeadingDeg = DECIDEGREES_TO_DEGREES(attitude.values.yaw); // 0 to 360
     const float groundCourseDeg = DECIDEGREES_TO_DEGREES(gpsSol.groundCourse);    // 0 to 360
