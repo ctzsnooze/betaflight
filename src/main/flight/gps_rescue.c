@@ -228,12 +228,26 @@ static void rescueAttainPosition(void)
     */
     // move target location along a path at set velocity
     if (newGpsData) {
-        if (rescueState.intent.targetVelocityCmS > 0.0f) {
-            const float distanceToMove = rescueState.intent.targetVelocityCmS * rescueState.sensor.gpsDataIntervalSeconds;
-            setLatLongSteps(); // update latitude and longitude step from current location to home at current target velocity
-            const int32_t latStep = distanceToMove * rescueState.intent.latFactor;
-            const int32_t lonStep = distanceToMove * rescueState.intent.lonFactor;
-            moveTargetLocation(latStep, lonStep); // send steps to update the target location in autopilot.c 
+        if (rescueState.intent.targetVelocityCmS > 0.0f) { // fly home or descend modes only
+            if (rescueState.intent.orientIMU) {
+                // orient the IMU by flying straight until it is oriented
+                // nose can be pointing in any direction and craft can have any velocity, and there can be wind
+                // hence, target a decent speed (10m/s) so that we can be confident that COG is primarily from the forward pitch
+                float imuTargetVelocityCmS = 1000.0f * rescueState.intent.velocityAttenuator;
+                // run an autopilot function that seeks to attain that velocity
+                apVelocityControl(imuTargetVelocityCmS);
+            } else {
+                // move target location along a path, step by step
+                const float distanceToMove = rescueState.intent.targetVelocityCmS * rescueState.sensor.gpsDataIntervalSeconds;
+                setLatLongSteps(); // update latitude and longitude step from current location to home at current target velocity
+                const int32_t latStep = distanceToMove * rescueState.intent.latFactor;
+                const int32_t lonStep = distanceToMove * rescueState.intent.lonFactor;
+                // send steps to update the target location in autopilot.c 
+                moveTargetLocation(latStep, lonStep);
+                // run the autopilot function that calculates earth frame PID sums and converts to pitch and roll values
+                // must have an accurate aircraft heading estimate from the IMU
+                posControlOnNewGpsData();
+            }
         }
         posControlOnNewGpsData(); // run the autopilot function that moves the aircraft to the target location
     }
@@ -627,6 +641,7 @@ void initialiseRescueValues (void)
     rescueState.sensor.velocityToHomeCmS = 0.0f;
     rescueState.intent.latFactor = 0.0f;
     rescueState.intent.lonFactor = 0.0f;
+    rescueState.intent.orientIMU = false;
     disableMag = false; // re-enable Mag on next rescue start even if it failed on a previous rescue
 }
 

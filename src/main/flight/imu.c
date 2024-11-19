@@ -610,9 +610,11 @@ static void updateGpsHeadingUsable(float groundspeedGain, float imuCourseError, 
     if (!canUseGPSHeading) {
         static float gpsHeadingTruth = 0;
         // groundspeedGain can be 5.0 in clean forward flight, up to 10.0 max
-        // fabsf(imuCourseError) is 0 when headings are aligned, 1 when 90 degrees error or worse
+        // fabsf(imuCourseError) is 0 when headings are aligned, +/-1 when 90 degrees error or worse
+        // we need to imuCourseError <0.33 (20 deg) at speed
         // accumulate 'points' based on alignment and likelihood of accumulation being good
-        gpsHeadingTruth += fmaxf(groundspeedGain - fabsf(imuCourseError), 0.0f) * dt;
+        const float alignment = fmaxf(1.0f - fabsf(imuCourseError) * 3.0f, 0.0f);
+        gpsHeadingTruth = groundspeedGain * alignment;
         // recenter at 2.5s time constant
         // TODO: intent is to match IMU time constant, approximately, but I don't exactly know how to do that
         gpsHeadingTruth -= 0.4 * dt * gpsHeadingTruth; 

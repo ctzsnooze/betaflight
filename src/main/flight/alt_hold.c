@@ -122,7 +122,8 @@ void altHoldUpdateTargetAltitude(void)
     altHold.targetVelocity = stickFactor * altHold.maxVelocity;
 
     // prevent stick input from moving target altitude too far away from current altitude
-    // otherwise it can be difficult to bring target to the other side of current in reasonable time
+    // otherwise it can be difficult to bring bring target altitude close to current altitude in a reasonable time
+    // using maxVelocity means the throttle can return altitude target to current altitude within 1s
     // this constrains the P and I response to user target changes, but not overshoots, or D of F responses
     if (fabsf(getAltitudeCm() - altHold.targetAltitudeCm) < altHold.maxVelocity) {
         altHold.targetAltitudeCm += altHold.targetVelocity * taskIntervalSeconds;
