@@ -263,7 +263,7 @@ bool positionControl(void)
 
         // update filters according to current GPS update rate
         const float vaGain = pt1FilterGain(ap.vaCutoff, gpsDataInterval);
-        const float iTermLeakGain = pt1FilterGainFromDelay(2.5f, gpsDataInterval);   // 2.5s time constant
+        const float iTermLeakGain = 1.0f - pt1FilterGainFromDelay(2.5f, gpsDataInterval);   // 2.5s time constant
         vector2_t pidSum = { 0 };       // P+I in loop, D+A added after axis loop (after limiting it)
         vector2_t pidDA;                // D+A
         for (axisEF_e pidAxisIdx = 0; ARRAYLEN(ap.pidAxis); pidAxisIdx++) {
