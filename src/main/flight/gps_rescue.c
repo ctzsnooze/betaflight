@@ -116,7 +116,6 @@ typedef struct {
 static const float taskIntervalSeconds = HZ_TO_INTERVAL(TASK_GPS_RESCUE_RATE_HZ); // i.e. 0.01 s
 static float rescueYaw;
 static bool disableMag = false;
-static bool newGpsData = false;
 
 rescueState_s rescueState;
 
@@ -164,7 +163,7 @@ static void setLatLongSteps(void)
     rescueState.intent.lonFactor = sin_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle / getGpsCosLat();
 }
 
-static void rescueAttainPosition(void)
+static void rescueAttainPosition(bool newGpsData)
 {
     // runs at 100hz, but only updates RPYT settings when new GPS Data arrives and when not in idle phase.
     switch (rescueState.phase) {
@@ -408,7 +407,7 @@ static void performSanityChecks(void)
     DEBUG_SET(DEBUG_RTH, 3, (rescueState.intent.secondsFailing * 100 + secondsLowSats));
 }
 
-static void sensorUpdate(void)
+static void sensorUpdate(bool newGpsData)
 {
     rescueState.sensor.healthy = gpsIsHealthy();
 
@@ -601,7 +600,7 @@ void initDescent(void)
     rescueState.intent.proximityAttenuator = GPS_distanceToHomeCm / rescueState.intent.descentDistanceCm;
 }
 
-void descend(void)
+void descend(bool newGpsData)
 {
     // zero yaw authority stops yawing when overshooting home, is set once, before entry to descent phase
 
@@ -648,19 +647,19 @@ void initialiseRescueValues (void)
 void gpsRescueUpdate(void)
 // runs at gpsRescueTaskIntervalSeconds, and runs whether or not rescue is active
 {
+    static uint16_t gpsStamp = 0;
+    bool newGpsData = gpsHasNewData(&gpsStamp);
+
     if (!FLIGHT_MODE(GPS_RESCUE_MODE)) {
         rescueStop(); // sets phase to RESCUE_IDLE; does nothing else.  RESCUE_IDLE tasks still run.
     } else if (FLIGHT_MODE(GPS_RESCUE_MODE) && rescueState.phase == RESCUE_IDLE) {
         rescueStart(); // sets phase to rescue_initialise if we enter GPS Rescue mode while idle
-        rescueAttainPosition(); // Initialise basic parameters when a Rescue starts (can't initialise sensor data reliably)
+        rescueAttainPosition(newGpsData); // Initialise basic parameters when a Rescue starts (can't initialise sensor data reliably)
         performSanityChecks(); // Initialises sanity check values when a Rescue starts
     }
     // Will now be in RESCUE_INITIALIZE mode, if just entered Rescue while IDLE, otherwise stays IDLE
 
-    static uint16_t gpsStamp = 0;
-    newGpsData = gpsHasNewData(&gpsStamp);
-
-    sensorUpdate(); // always get latest GPS and Altitude data, update ascend and descend rates
+    sensorUpdate(newGpsData); // always get latest GPS and Altitude data, update ascend and descend rates
 
     static bool returnAltitudeLow = true;
     rescueState.isAvailable = checkGPSRescueIsAvailable();
@@ -750,14 +749,14 @@ void gpsRescueUpdate(void)
             rescueState.phase = RESCUE_LANDING;
             rescueState.intent.secondsFailing = 0; // reset sanity timer for landing
         }
-        descend();
+        descend(newGpsData);
         break;
 
     case RESCUE_LANDING:
         // Reduce altitude target steadily until impact, then disarm.
         // control yaw angle and throttle and pitch, attenuate velocity, roll and pitch iTerm
         // increase velocity smoothing cutoff as we get closer to ground
-        descend();
+        descend(newGpsData);
         disarmOnImpact();
         break;
 
@@ -781,7 +780,7 @@ void gpsRescueUpdate(void)
     DEBUG_SET(DEBUG_RTH, 0, lrintf(rescueState.intent.maxAltitudeCm / 10.0f));
 
     performSanityChecks();
-    rescueAttainPosition();
+    rescueAttainPosition(newGpsData);
 }
 
 float gpsRescueGetYawRate(void)
