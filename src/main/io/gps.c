@@ -92,8 +92,10 @@ GPS_svinfo_t GPS_svinfo[GPS_SV_MAXSATS_M8N];
 #define GPS_TASK_DECAY_SHIFT 9         // Smoothing factor for GPS task re-scheduler
 
 static serialPort_t *gpsPort;
-static float gpsDataIntervalSeconds;
-static uint16_t gpsStamp = ~0; // Initialize to an invalid state
+static float gpsDataIntervalSeconds = 0.1f;
+static float gpsDataFrequencyHz = 10.0f;
+
+static uint16_t currentGpsStamp = 0; // logical timer for received position update
 
 typedef struct gpsInitData_s {
     uint8_t index;
@@ -315,7 +317,7 @@ typedef struct ubxMessage_s {
 
 typedef enum {
     UBLOX_DETECT_UNIT,      //  0
-    UBLOX_SLOW_NAV_RATE,    //  1. 
+    UBLOX_SLOW_NAV_RATE,    //  1.
     UBLOX_MSG_DISABLE_NMEA, //  2. Disable NMEA, config message
     UBLOX_MSG_VGS,          //  3. VGS: Course over ground and Ground speed
     UBLOX_MSG_GSV,          //  4. GSV: GNSS Satellites in View
@@ -628,35 +630,35 @@ static void ubloxSendNAV5Message(uint8_t model) {
 //         payload[2] = (uint8_t)(0 >> (8 * 2));
 //         payload[3] = (uint8_t)(0 >> (8 * 3));  // all payloads are zero, the default MSL for 2D fix
 //         offset += ubloxAddValSet(&tx_buffer, CFG_NAVSPG_CONSTR_ALT, payload, offset); // 23
-// 
+//
 //         payload[0] = (uint8_t)(10000 >> (8 * 0));
 //         payload[1] = (uint8_t)(10000 >> (8 * 1));
 //         payload[2] = (uint8_t)(10000 >> (8 * 2));
 //         payload[3] = (uint8_t)(10000 >> (8 * 3)); // // all payloads are 1000, the default 2D variance factor
 //         offset += ubloxAddValSet(&tx_buffer, CFG_NAVSPG_CONSTR_ALTVAR, payload, offset); // 31
-// 
+//
 //         payload[0] = 5; // sets the default minimum elevation in degrees to the default of 5
 //         offset += ubloxAddValSet(&tx_buffer, CFG_NAVSPG_INFIL_MINELEV, payload, offset); // 36
-// 
+//
 //         payload[0] = (uint8_t)(250 >> (8 * 0));
 //         payload[1] = (uint8_t)(250 >> (8 * 1)); // sets the output filter PDOP mask to default of 250
 //         offset += ubloxAddValSet(&tx_buffer, CFG_NAVSPG_OUTFIL_PDOP, payload, offset); // 42
-// 
+//
 //         payload[0] = (uint8_t)(250 >> (8 * 0));
 //         payload[1] = (uint8_t)(250 >> (8 * 1));
 //         offset += ubloxAddValSet(&tx_buffer, CFG_NAVSPG_OUTFIL_TDOP, payload, offset); // 48
-// 
+//
 //         payload[0] = (uint8_t)(100 >> (8 * 0));
 //         payload[1] = (uint8_t)(100 >> (8 * 1));
 //         offset += ubloxAddValSet(&tx_buffer, CFG_NAVSPG_OUTFIL_PACC, payload, offset); // 54
-// 
+//
 //         payload[0] = (uint8_t)(300 >> (8 * 0));
 //         payload[1] = (uint8_t)(300 >> (8 * 1));
 //         offset += ubloxAddValSet(&tx_buffer, CFG_NAVSPG_OUTFIL_TACC, payload, offset); // 60
-// 
+//
 //         payload[0] = 0;
 //         offset += ubloxAddValSet(&tx_buffer, CFG_MOT_GNSSSPEED_THRS, payload, offset); // 65
-// 
+//
 //         payload[0] = (uint8_t)(200 >> (8 * 0));
 //         payload[1] = (uint8_t)(200 >> (8 * 1));
 //         offset += ubloxAddValSet(&tx_buffer, CFG_MOT_GNSSDIST_THRS, payload, offset); // 71
@@ -666,7 +668,7 @@ static void ubloxSendNAV5Message(uint8_t model) {
 
 //         payload[0] = 0;
 //         offset += ubloxAddValSet(&tx_buffer, CFG_NAVSPG_INFIL_NCNOTHRS, payload, offset); // 81
-// 
+//
 //         payload[0] = 0;
 //         offset += ubloxAddValSet(&tx_buffer, CFG_NAVSPG_INFIL_CNOTHRS, payload, offset); // 86
 
@@ -698,18 +700,18 @@ static void ubloxSendNAV5Message(uint8_t model) {
 // *** Assist Now Autonomous temporarily disabled until a subsequent PR either includes, or removes it ***
 // static void ubloxSendNavX5Message(void) {
 //     ubxMessage_t tx_buffer;
-// 
+//
 //     if (gpsData.ubloxM9orAbove) {
 //         uint8_t payload[1];
 //         payload[0] = 1;
 //         size_t offset = ubloxValSet(&tx_buffer, CFG_ANA_USE_ANA, payload, UBX_VAL_LAYER_RAM); // 5
-// 
+//
 //         ubloxSendConfigMessage(&tx_buffer, MSG_CFG_VALSET, offsetof(ubxCfgValSet_t, cfgData) + offset, true);
 //     } else {
 //         memset(&tx_buffer, 0, sizeof(ubxMessage_t));
-// 
+//
 //         tx_buffer.payload.cfg_nav5x.version = 0x0002;
-// 
+//
 //         tx_buffer.payload.cfg_nav5x.mask1 = 0x4000;
 //         tx_buffer.payload.cfg_nav5x.mask2 = 0x0;
 //         tx_buffer.payload.cfg_nav5x.minSVs = 0;
@@ -721,11 +723,11 @@ static void ubloxSendNAV5Message(uint8_t model) {
 //         tx_buffer.payload.cfg_nav5x.wknRollover = 0;
 //         tx_buffer.payload.cfg_nav5x.sigAttenCompMode = 0;
 //         tx_buffer.payload.cfg_nav5x.usePPP = 0;
-// 
+//
 //         tx_buffer.payload.cfg_nav5x.aopCfg = 0x1; //bit 0 = useAOP
-// 
+//
 //         tx_buffer.payload.cfg_nav5x.useAdr = 0;
-// 
+//
 //         ubloxSendConfigMessage(&tx_buffer, MSG_CFG_NAVX_SETTINGS, sizeof(ubxCfgNav5x_t), false);
 //     }
 // }
@@ -953,7 +955,7 @@ static void setSatInfoMessageRate(uint8_t divisor)
 void gpsConfigureNmea(void)
 {
     // minimal support for NMEA, we only:
-    // - set the FC's GPS port to the user's configured rate, and 
+    // - set the FC's GPS port to the user's configured rate, and
     // - send any NMEA custom commands to the GPS Module
     // the user must configure the power-up baud rate of the module to be fast enough for their data rate
     // Note: we always parse all incoming NMEA messages
@@ -1542,7 +1544,6 @@ bool gpsIsHealthy(void)
 #define FRAME_GSV  3
 #define FRAME_GSA  4
 
-
 // This code is used for parsing NMEA data
 
 /* Alex optimization
@@ -1763,7 +1764,7 @@ static bool writeGpsSolutionNmea(gpsSolutionData_t *sol, const gpsDataNmea_t *da
             }
              navDeltaTimeMs = (msInTenSeconds + data->time - gpsData.lastNavSolTs) % msInTenSeconds;
              gpsData.lastNavSolTs = data->time;
-             sol->navIntervalMs = constrain(navDeltaTimeMs, 100, 2500);
+             sol->navIntervalMs = constrain(navDeltaTimeMs, 50, 2500);
             // return only one true statement to trigger one "newGpsDataReady" flag per GPS loop
             return true;
 
@@ -2181,7 +2182,7 @@ static bool UBLOX_parse_gps(void)
         *dashboardGpsPacketLogCurrentChar = DASHBOARD_LOG_UBLOX_VELNED;
 #endif
         gpsSol.speed3d = ubxRcvMsgPayload.ubxNavVelned.speed_3d;       // cm/s
-        gpsSol.groundSpeed = ubxRcvMsgPayload.ubxNavVelned.speed_2d;    // cm/s
+        gpsSol.groundSpeed = ubxRcvMsgPayload.ubxNavVelned.speed_2d;   // cm/s
         gpsSol.groundCourse = (uint16_t) (ubxRcvMsgPayload.ubxNavVelned.heading_2d / 10000);     // Heading 2D deg * 100000 rescaled to deg * 10
         ubxHaveNewSpeed = true;
         break;
@@ -2555,7 +2556,6 @@ void GPS_reset_home_position(void)
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
-#define EARTH_ANGLE_TO_CM (111.3195f * 1000 * 100 / GPS_DEGREES_DIVIDER)  // latitude unit to cm at equator (111km/deg)
 // Get distance between two points in cm using spherical to Cartesian transform
 // One one latitude unit, or one longitude unit at the equator, equals 1.113195 cm.
 // Get bearing from pos1 to pos2, returns values with 0.01 degree precision
@@ -2607,18 +2607,15 @@ void onGpsNewData(void)
         return;
     }
 
-    gpsStamp++; // increment the stamp
+    currentGpsStamp++; // new GPS data available
 
-    gpsDataIntervalSeconds = gpsSol.navIntervalMs / 1000.0f;
+    gpsDataIntervalSeconds = gpsSol.navIntervalMs * 0.001f; // range for navIntervalMs is constrained to 50 - 2500
+    gpsDataFrequencyHz = 1.0f / gpsDataIntervalSeconds;
 
     GPS_calculateDistanceAndDirectionToHome();
     if (ARMING_FLAG(ARMED)) {
         GPS_calculateDistanceFlown(false);
     }
-
-#ifdef USE_GPS_RESCUE
-    gpsRescueNewGpsData();
-#endif
 
 #ifdef USE_GPS_LAP_TIMER
     gpsLapTimerNewGpsData();
@@ -2626,8 +2623,15 @@ void onGpsNewData(void)
 
 }
 
-uint16_t getGpsStamp(void) {
-    return gpsStamp;
+// check if new data has been received since last check
+// client stamp should be initialized to 0, then gpsHasNewData will return true on first call
+bool gpsHasNewData(uint16_t* stamp) {
+    if (*stamp != currentGpsStamp) {
+        *stamp = currentGpsStamp;
+        return true;
+    } else {
+        return false;
+    }
 }
 
 void gpsSetFixState(bool state)
@@ -2643,6 +2647,11 @@ void gpsSetFixState(bool state)
 float getGpsDataIntervalSeconds(void)
 {
     return gpsDataIntervalSeconds;
+}
+
+float getGpsDataFrequencyHz(void)
+{
+    return gpsDataFrequencyHz;
 }
 
 baudRate_e getGpsPortActualBaudRateIndex(void)

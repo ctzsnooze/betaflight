@@ -72,6 +72,8 @@
 #define TPA_MAX 100
 
 #ifdef USE_WING
+#define ANGLE_PITCH_OFFSET_MAX 450
+#define S_TERM_SCALE 0.01f
 #define TPA_LOW_RATE_MIN INT8_MIN
 #define TPA_GRAVITY_MAX 5000
 #define TPA_CURVE_STALL_THROTTLE_MAX 100
@@ -90,7 +92,10 @@
 
 typedef enum {
     TPA_MODE_PD,
-    TPA_MODE_D
+    TPA_MODE_D,
+#ifdef USE_WING
+    TPA_MODE_PDS,
+#endif
 } tpaMode_e;
 
 typedef enum {
@@ -316,6 +321,7 @@ typedef struct pidProfile_s {
     uint16_t tpa_speed_max_voltage;     // For wings: theoretical max voltage; used for throttle scailing with voltage for air speed estimation
     int16_t tpa_speed_pitch_offset;     // For wings: pitch offset in degrees*10 for craft speed estimation
     uint8_t yaw_type;                   // For wings: type of yaw (rudder or differential thrust)
+    int16_t angle_pitch_offset;         // For wings: pitch offset for angle modes; in decidegrees; positive values tilting the wing down
 } pidProfile_t;
 
 PG_DECLARE_ARRAY(pidProfile_t, PID_PROFILE_COUNT, pidProfiles);
@@ -515,6 +521,7 @@ typedef struct pidRuntime_s {
     float spa[XYZ_AXIS_COUNT]; // setpoint pid attenuation (0.0 to 1.0). 0 - full attenuation, 1 - no attenuation
     tpaSpeedParams_t tpaSpeed;
     float tpaFactorYaw;
+    float tpaFactorSterm[XYZ_AXIS_COUNT];
 #endif // USE_WING
 
 #ifdef USE_ADVANCED_TPA

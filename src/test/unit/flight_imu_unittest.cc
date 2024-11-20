@@ -42,7 +42,6 @@ extern "C" {
     #include "fc/runtime_config.h"
     #include "fc/rc.h"
 
-    #include "flight/autopilot.h"
     #include "flight/imu.h"
     #include "flight/mixer.h"
     #include "flight/pid.h"
@@ -51,6 +50,8 @@ extern "C" {
     #include "io/gps.h"
 
     #include "rx/rx.h"
+
+    #include "pg/autopilot.h"
 
     #include "sensors/acceleration.h"
     #include "sensors/barometer.h"
@@ -435,15 +436,7 @@ extern "C" {
     bool schedulerGetIgnoreTaskExecTime() { return false; }
     float gyroGetFilteredDownsampled(int) { return 0.0f; }
     float baroUpsampleAltitude()  { return 0.0f; }
-    float pt2FilterGain(float, float)  { return 0.0f; }
     float getBaroAltitude(void) { return 3000.0f; }
     float gpsRescueGetImuYawCogGain(void) { return 1.0f; }
     float getRcDeflectionAbs(int) { return 0.0f; }
-    void pt2FilterInit(pt2Filter_t *baroDerivativeLpf, float) {
-        UNUSED(baroDerivativeLpf);
-    }
-    float pt2FilterApply(pt2Filter_t *baroDerivativeLpf, float) {
-        UNUSED(baroDerivativeLpf);
-        return 0.0f;
-    }
 }

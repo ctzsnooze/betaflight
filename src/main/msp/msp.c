@@ -71,6 +71,7 @@
 #include "drivers/usb_msc.h"
 #include "drivers/vtx_common.h"
 #include "drivers/vtx_table.h"
+#include "drivers/rangefinder/rangefinder_lidarmt.h"
 
 #include "fc/board_info.h"
 #include "fc/controlrate_profile.h"
@@ -82,9 +83,7 @@
 #include "fc/rc_modes.h"
 #include "fc/runtime_config.h"
 
-#include "flight/autopilot.h"
 #include "flight/failsafe.h"
-#include "flight/gps_rescue.h"
 #include "flight/imu.h"
 #include "flight/mixer.h"
 #include "flight/pid.h"
@@ -118,9 +117,11 @@
 #include "osd/osd_elements.h"
 #include "osd/osd_warnings.h"
 
+#include "pg/autopilot.h"
 #include "pg/beeper.h"
 #include "pg/board.h"
 #include "pg/dyn_notch.h"
+#include "pg/gps_rescue.h"
 #include "pg/gyrodev.h"
 #include "pg/motor.h"
 #include "pg/pos_hold.h"
@@ -157,7 +158,6 @@
 #endif
 
 #include "msp.h"
-
 
 static const char * const flightControllerIdentifier = FC_FIRMWARE_IDENTIFIER; // 4 UPPER CASE alpha numeric characters that identify the flight controller.
 
@@ -1228,13 +1228,11 @@ case MSP_NAME:
                 rpmDataAvailable = true;
                 invalidPct = 10000; // 100.00%
 
-
 #ifdef USE_DSHOT_TELEMETRY_STATS
                 if (isDshotMotorTelemetryActive(i)) {
                     invalidPct = getDshotTelemetryMotorInvalidPercent(i);
                 }
 #endif
-
 
                 // Provide extended dshot telemetry
                 if ((dshotTelemetryState.motorState[i].telemetryTypes & DSHOT_EXTENDED_TELEMETRY_MASK) != 0) {
@@ -1817,7 +1815,6 @@ case MSP_NAME:
         sbufWriteU16(dst, flight3DConfig()->deadband3d_throttle);
         break;
 
-
     case MSP_SENSOR_ALIGNMENT: {
         uint8_t gyroAlignment;
 #ifdef USE_MULTI_GYRO
@@ -2192,7 +2189,6 @@ case MSP_NAME:
     }
     return !unsupportedCommand;
 }
-
 
 #ifdef USE_SIMPLIFIED_TUNING
 // Reads simplified PID tuning values from MSP buffer
@@ -3303,8 +3299,13 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 #else
         sbufReadU8(src);
 #endif
-        break;
 
+#ifdef USE_RANGEFINDER
+        rangefinderConfigMutable()->rangefinder_hardware = sbufReadU8(src);
+#else
+        sbufReadU8(src);        // rangefinder hardware
+#endif
+        break;
 #ifdef USE_ACC
     case MSP_ACC_CALIBRATION:
         if (!ARMING_FLAG(ARMED))
@@ -3655,6 +3656,11 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 #endif
 
+#if defined(USE_RANGEFINDER_MT)
+    case MSP2_SENSOR_RANGEFINDER_LIDARMT:
+        mtRangefinderReceiveNewData(sbufPtr(src));
+        break;
+#endif
 #ifdef USE_GPS
     case MSP2_SENSOR_GPS:
         (void)sbufReadU8(src);              // instance

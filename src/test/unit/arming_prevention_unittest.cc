@@ -36,7 +36,6 @@ extern "C" {
     #include "fc/rc_modes.h"
     #include "fc/runtime_config.h"
 
-    #include "flight/autopilot.h"
     #include "flight/failsafe.h"
     #include "flight/gps_rescue.h"
     #include "flight/imu.h"
@@ -48,11 +47,13 @@ extern "C" {
     #include "io/beeper.h"
     #include "io/gps.h"
 
+    #include "pg/autopilot.h"
     #include "pg/gps_rescue.h"
     #include "pg/motor.h"
+    #include "pg/rx.h"
+
     #include "pg/pg.h"
     #include "pg/pg_ids.h"
-    #include "pg/rx.h"
 
     #include "rx/rx.h"
 
@@ -100,9 +101,7 @@ extern "C" {
     uint8_t activePidLoopDenom = 1;
 
     float getGpsDataIntervalSeconds(void) { return 0.1f; }
-    void pt1FilterUpdateCutoff(pt1Filter_t *filter, float k) { filter->k = k; }
-    void pt2FilterUpdateCutoff(pt2Filter_t *filter, float k) { filter->k = k; }
-    void pt3FilterUpdateCutoff(pt3Filter_t *filter, float k) { filter->k = k; }
+    float getGpsDataFrequencyHz(void) { return 10.0f; }
 }
 
 uint32_t simulationFeatureFlags = 0;
@@ -1140,32 +1139,6 @@ extern "C" {
     float getAltitudeCm(void) {return 0.0f;}
     float getAltitudeDerivative(void) {return 0.0f;}
 
-    float pt1FilterGain(float, float) { return 0.5f; }
-    float pt2FilterGain(float, float)  { return 0.1f; }
-    float pt3FilterGain(float, float)  { return 0.1f; }
-
-    void pt1FilterInit(pt1Filter_t *velocityDLpf, float) {
-        UNUSED(velocityDLpf);
-    }
-    float pt1FilterApply(pt1Filter_t *velocityDLpf, float) {
-        UNUSED(velocityDLpf);
-        return 0.0f;
-    }
-    void pt2FilterInit(pt2Filter_t *velocityDLpf, float) {
-        UNUSED(velocityDLpf);
-    }
-    float pt2FilterApply(pt2Filter_t *velocityDLpf, float) {
-        UNUSED(velocityDLpf);
-        return 0.0f;
-    }
-    void pt3FilterInit(pt3Filter_t *velocityUpsampleLpf, float) {
-        UNUSED(velocityUpsampleLpf);
-    }
-    float pt3FilterApply(pt3Filter_t *velocityUpsampleLpf, float) {
-        UNUSED(velocityUpsampleLpf);
-        return 0.0f;
-    }
-
     float sin_approx(float) {return 0.0f;}
     float cos_approx(float) {return 1.0f;}
     float atan2_approx(float, float) {return 0.0f;}
@@ -1173,7 +1146,7 @@ extern "C" {
     void getRcDeflectionAbs(void) {}
     uint32_t getCpuPercentageLate(void) { return 0; }
     bool crashFlipSuccessful(void) { return false; }
-    
+
     void GPS_distance_cm_bearing(const gpsLocation_t *from, const gpsLocation_t *to, bool dist3d, uint32_t *dist, int32_t *bearing)
     {
        UNUSED(from);
@@ -1182,13 +1155,15 @@ extern "C" {
        UNUSED(dist);
        UNUSED(bearing);
     }
-void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pEWDist, float *pNSDist)
+
+void GPS_latLongVectors(const gpsLocation_t *from, const gpsLocation_t *to, float *latDist, float *lonDist)
     {
        UNUSED(from);
        UNUSED(to);
-       UNUSED(pEWDist);
-       UNUSED(pNSDist);
+       UNUSED(latDist);
+       UNUSED(lonDist);
     }
+
     float vector2Norm(const vector2_t *v) {
        UNUSED(*v);
        return 0.0f;
@@ -1196,5 +1171,9 @@ void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pE
 
     bool canUseGPSHeading;
     bool compassIsHealthy;
-    uint16_t getGpsStamp(void){ return 0; }
+
+    bool gpsHasNewData(uint16_t* gpsStamp) {
+         UNUSED(*gpsStamp);
+         return true;
+     }
 }

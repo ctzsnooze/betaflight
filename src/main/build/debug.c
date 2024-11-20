@@ -120,5 +120,7 @@ const char * const debugModeNames[DEBUG_COUNT] = {
     [DEBUG_S_TERM] = "S_TERM",
     [DEBUG_SPA] = "SPA",
     [DEBUG_TASK] = "TASK",
+    [DEBUG_GIMBAL] = "GIMBAL",
+    [DEBUG_WING_SETPOINT] = "WING_SETPOINT",
     [DEBUG_AUTOPILOT_POSITION] = "AUTOPILOT_POSITION",
 };

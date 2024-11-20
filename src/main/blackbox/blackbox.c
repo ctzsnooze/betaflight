@@ -62,8 +62,6 @@
 #include "fc/rc_modes.h"
 #include "fc/runtime_config.h"
 
-#include "flight/alt_hold.h"
-#include "flight/autopilot.h"
 #include "flight/failsafe.h"
 #include "flight/gps_rescue.h"
 #include "flight/mixer.h"
@@ -79,8 +77,12 @@
 
 #include "pg/pg.h"
 #include "pg/pg_ids.h"
+
+#include "pg/alt_hold.h"
+#include "pg/autopilot.h"
 #include "pg/motor.h"
 #include "pg/rx.h"
+#include "pg/pos_hold.h"
 
 #include "rx/rx.h"
 
@@ -91,7 +93,6 @@
 #include "sensors/gyro.h"
 #include "sensors/gyro_init.h"
 #include "sensors/rangefinder.h"
-
 
 #ifdef USE_FLASH_TEST_PRBS
 void checkFlashStart(void);
@@ -337,7 +338,6 @@ typedef enum BlackboxState {
     BLACKBOX_STATE_ERASING,
     BLACKBOX_STATE_ERASED
 } BlackboxState;
-
 
 typedef struct blackboxMainState_s {
     uint32_t time;
@@ -733,7 +733,7 @@ static void writeIntraframe(void)
         for (unsigned x = 0; x < ARRAYLEN(servo); ++x) {
             out[x] = blackboxCurrent->servo[x] - 1500;
         }
-        
+
         blackboxWriteTag8_8SVB(out, ARRAYLEN(out));
     }
 #endif
@@ -891,12 +891,12 @@ static void writeInterframe(void)
 
 #ifdef USE_SERVOS
     if (testBlackboxCondition(CONDITION(SERVOS))) {
-        STATIC_ASSERT(ARRAYLEN(servo) <= 8, "TAG8_8SVB supports at most 8 values"); 
+        STATIC_ASSERT(ARRAYLEN(servo) <= 8, "TAG8_8SVB supports at most 8 values");
         int32_t out[ARRAYLEN(servo)];
         for (unsigned x = 0; x < ARRAYLEN(servo); ++x) {
             out[x] = blackboxCurrent->servo[x] - blackboxLast->servo[x];
         }
-        
+
         blackboxWriteTag8_8SVB(out, ARRAYLEN(out));
     }
 #endif
@@ -1777,6 +1777,7 @@ static bool blackboxWriteSysinfo(void)
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_TPA_SPEED_MAX_VOLTAGE, "%d", currentPidProfile->tpa_speed_max_voltage);
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_TPA_SPEED_PITCH_OFFSET, "%d", currentPidProfile->tpa_speed_pitch_offset);
         BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_YAW_TYPE, "%d", currentPidProfile->yaw_type);
+        BLACKBOX_PRINT_HEADER_LINE(PARAM_NAME_ANGLE_PITCH_OFFSET, "%d", currentPidProfile->angle_pitch_offset);
 #endif // USE_WING
 
         default:

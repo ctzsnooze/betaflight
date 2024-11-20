@@ -34,9 +34,10 @@
 #include "rx/rx.h"
 #include "sensors/compass.h"
 
+#include "pg/pos_hold.h"
 #include "pos_hold.h"
 
-typedef struct {
+typedef struct posHoldState_s {
     bool posHoldIsOK;
     float deadband;
     bool useStickAdjustment;

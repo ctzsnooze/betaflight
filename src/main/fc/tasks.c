@@ -65,6 +65,7 @@
 #include "io/beeper.h"
 #include "io/dashboard.h"
 #include "io/flashfs.h"
+#include "io/gimbal_control.h"
 #include "io/gps.h"
 #include "io/ledstrip.h"
 #include "io/piniobox.h"
@@ -202,7 +203,7 @@ static void taskUpdateRxMain(timeUs_t currentTimeUs)
         break;
 
     case RX_STATE_UPDATE:
-        // updateRcCommands sets rcCommand, which is needed by updateAltHoldState and updateSonarAltHoldState
+        // updateRcCommands sets rcCommand, which is needed by updateAltHold and updateSonarAltHoldState
         updateRcCommands();
         updateArmingStatus();
 
@@ -378,7 +379,11 @@ task_attribute_t task_attributes[TASK_COUNT] = {
 #endif
 
 #ifdef USE_ALT_HOLD_MODE
-    [TASK_ALTHOLD] = DEFINE_TASK("ALTHOLD", NULL, NULL, updateAltHoldState, TASK_PERIOD_HZ(ALTHOLD_TASK_RATE_HZ), TASK_PRIORITY_LOW),
+    [TASK_ALTHOLD] = DEFINE_TASK("ALTHOLD", NULL, NULL, updateAltHold, TASK_PERIOD_HZ(ALTHOLD_TASK_RATE_HZ), TASK_PRIORITY_LOW),
+#endif
+
+#ifdef USE_POS_HOLD_MODE
+    [TASK_POSHOLD] = DEFINE_TASK("POSHOLD", NULL, NULL, updatePosHold, TASK_PERIOD_HZ(POSHOLD_TASK_RATE_HZ), TASK_PRIORITY_LOW),
 #endif
 
 #ifdef USE_POS_HOLD_MODE
@@ -457,6 +462,9 @@ task_attribute_t task_attributes[TASK_COUNT] = {
     [TASK_RC_STATS] = DEFINE_TASK("RC_STATS", NULL, NULL, rcStatsUpdate, TASK_PERIOD_HZ(100), TASK_PRIORITY_LOW),
 #endif
 
+#ifdef USE_GIMBAL
+    [TASK_GIMBAL] = DEFINE_TASK("GIMBAL", NULL, NULL, gimbalUpdate, TASK_PERIOD_HZ(100), TASK_PRIORITY_MEDIUM),
+#endif
 };
 
 task_t *getTask(unsigned taskId)
@@ -639,5 +647,9 @@ void tasksInit(void)
 
 #ifdef USE_RC_STATS
     setTaskEnabled(TASK_RC_STATS, true);
+#endif
+
+#ifdef USE_GIMBAL
+    setTaskEnabled(TASK_GIMBAL, true);
 #endif
 }

@@ -86,7 +86,6 @@ static volatile bool dataWritten = true;
 // The position of the buffer's tail in the overall flash address space:
 static uint32_t tailAddress = 0;
 
-
 #ifdef USE_FLASH_TEST_PRBS
 // Write an incrementing sequence of bytes instead of the requested data and verify
 static DMA_DATA uint8_t checkFlashBuffer[FLASHFS_WRITE_BUFFER_SIZE];
@@ -360,12 +359,10 @@ static int flashfsGetDirtyDataBuffers(uint8_t const *buffers[], uint32_t bufferS
     return 0;
 }
 
-
 static bool flashfsNewData(void)
 {
     return dataWritten;
 }
-
 
 /**
  * Get the current offset of the file pointer within the volume.
@@ -534,9 +531,6 @@ int flashfsReadAbs(uint32_t address, uint8_t *buffer, unsigned int len)
         // Truncate their request
         len = flashfsSize - address;
     }
-
-    // Don't read across a page boundary
-    len = MIN(len, flashGeometry->pageSize - (address & (flashGeometry->pageSize - 1)));
 
     // Since the read could overlap data in our dirty buffers, force a sync to clear those first
     flashfsFlushSync();

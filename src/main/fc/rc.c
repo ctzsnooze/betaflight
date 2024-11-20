@@ -47,9 +47,6 @@
 #include "flight/pid_init.h"
 
 #include "pg/rx.h"
-#include "pg/pos_hold.h"
-#include "pg/autopilot.h"
-
 #include "rx/rx.h"
 
 #include "sensors/battery.h"
@@ -90,7 +87,7 @@ enum {
 #ifdef USE_FEEDFORWARD
 static float feedforwardSmoothed[3];
 static float feedforwardRaw[3];
-static uint16_t feedforwardAveraging; 
+static uint16_t feedforwardAveraging;
 typedef struct laggedMovingAverageCombined_s {
     laggedMovingAverage_t filter;
     float buf[4];
@@ -527,7 +524,7 @@ FAST_CODE_NOINLINE void calculateFeedforward(const pidRuntime_t *pid, flight_dyn
     float rxRate = currentRxRateHz;                 // 1e6f / currentRxIntervalUs;
     static float prevRcCommand[3];                  // for rcCommandDelta test
     static float prevRcCommandDeltaAbs[3];          // for duplicate interpolation
-    static float prevSetpoint[3];                   // equals raw unless extrapolated forward 
+    static float prevSetpoint[3];                   // equals raw unless extrapolated forward
     static float prevSetpointSpeed[3];              // for setpointDelta calculation
     static float prevSetpointSpeedDelta[3];         // for duplicate extrapolation
     static bool isPrevPacketDuplicate[3];             // to identify multiple identical packets

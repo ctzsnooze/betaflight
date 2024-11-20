@@ -32,9 +32,10 @@
 #include "pg/gps.h"
 
 #define GPS_DEGREES_DIVIDER 10000000L
+#define EARTH_ANGLE_TO_CM (111.3195f * 1000 * 100 / GPS_DEGREES_DIVIDER) // 1.113195 cm per latitude unit at the equator (111.3195km/deg)
 #define GPS_X 1
 #define GPS_Y 0
-#define GPS_MIN_SAT_COUNT 4      // number of sats to trigger low sat count sanity check
+#define GPS_MIN_SAT_COUNT 4     // number of sats to trigger low sat count sanity check
 
 #ifdef USE_GPS_UBLOX
 typedef enum {
@@ -247,8 +248,8 @@ typedef struct gpsSolutionData_s {
     gpsLocation_t llh;
     gpsDilution_t dop;
     gpsAccuracy_t acc;
-    uint16_t speed3d;               // speed in 0.1m/s
-    uint16_t groundSpeed;           // speed in 0.1m/s
+    uint16_t speed3d;               // speed in cm/s
+    uint16_t groundSpeed;           // speed in cm/s
     uint16_t groundCourse;          // degrees * 10
     uint8_t numSat;
     uint32_t time;                  // GPS msToW
@@ -283,8 +284,8 @@ typedef struct gpsData_s {
     uint32_t state_position;        // incremental variable for loops
     uint32_t state_ts;              // timestamp for last state_position increment
     uint8_t state;                  // GPS thread state. Used for detecting cable disconnects and configuring attached devices
-    uint8_t userBaudRateIndex;          // index into auto-detecting or current baudrate
-    uint8_t tempBaudRateIndex;          // index into auto-detecting or current baudrate
+    uint8_t userBaudRateIndex;      // index into auto-detecting or current baudrate
+    uint8_t tempBaudRateIndex;      // index into auto-detecting or current baudrate
 
     uint8_t ackWaitingMsgId;        // Message id when waiting for ACK
     ubloxAckState_e ackState;       // Ack State
@@ -302,7 +303,7 @@ typedef struct gpsData_s {
 extern gpsLocation_t GPS_home_llh;
 extern uint16_t GPS_distanceToHome;        // distance to home point in meters
 extern uint32_t GPS_distanceToHomeCm;      // distance to home point in cm
-extern int16_t GPS_directionToHome;        // direction to home or hol point in degrees
+extern int16_t GPS_directionToHome;        // direction to home point in degrees * 10
 extern uint32_t GPS_distanceFlownInCm;     // distance flown since armed in centimeters
 
 typedef enum {
@@ -352,7 +353,6 @@ extern GPS_svinfo_t GPS_svinfo[GPS_SV_MAXSATS_M8N];
 #define TASK_GPS_RATE       100     // default update rate of GPS task
 #define TASK_GPS_RATE_FAST  500    // update rate of GPS task while Rx buffer is not empty
 
-
 #ifdef USE_DASHBOARD
 // Data used *only* by the dashboard device (OLED display).
 // Note this data should probably be in the dashboard module, not here. On the refactor list...
@@ -394,7 +394,9 @@ void GPS_distance_cm_bearing(const gpsLocation_t *from, const gpsLocation_t *to,
 void GPS_distance2d(const gpsLocation_t *from, const gpsLocation_t *to, vector2_t *distance);
 
 void gpsSetFixState(bool state);
-float getGpsDataIntervalSeconds(void);      // sends GPS Nav Data interval to GPS Rescue
-uint16_t getGpsStamp(void);
+
+bool gpsHasNewData(uint16_t *stamp);
+float getGpsDataIntervalSeconds(void);  // range 0.05 - 2.5s
+float getGpsDataFrequencyHz(void);      // range 20Hz - 0.4Hz
 
 baudRate_e getGpsPortActualBaudRateIndex(void);

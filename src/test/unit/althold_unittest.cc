@@ -25,6 +25,7 @@ extern "C" {
     #include "build/debug.h"
     #include "pg/pg_ids.h"
 
+    #include "common/filter.h"
     #include "common/vector.h"
 
     #include "fc/core.h"
@@ -32,7 +33,6 @@ extern "C" {
     #include "fc/runtime_config.h"
 
     #include "flight/alt_hold.h"
-    #include "flight/autopilot.h"
     #include "flight/failsafe.h"
     #include "flight/imu.h"
     #include "flight/pid.h"
@@ -42,6 +42,9 @@ extern "C" {
 
     #include "rx/rx.h"
 
+    #include "pg/alt_hold.h"
+    #include "pg/autopilot.h"
+    
     #include "sensors/acceleration.h"
     #include "sensors/gyro.h"
 
@@ -67,22 +70,22 @@ uint32_t millis() {
 
 TEST(AltholdUnittest, altHoldTransitionsTest)
 {
-    updateAltHoldState(currentTimeUs);
+    updateAltHold(currentTimeUs);
     EXPECT_EQ(isAltHoldActive(), false);
 
     flightModeFlags |= ALT_HOLD_MODE;
     millisRW = 42;
-    updateAltHoldState(currentTimeUs);
+    updateAltHold(currentTimeUs);
     EXPECT_EQ(isAltHoldActive(), true);
 
     flightModeFlags ^= ALT_HOLD_MODE;
     millisRW = 56;
-    updateAltHoldState(currentTimeUs);
+    updateAltHold(currentTimeUs);
     EXPECT_EQ(isAltHoldActive(), false);
 
     flightModeFlags |= ALT_HOLD_MODE;
     millisRW = 64;
-    updateAltHoldState(currentTimeUs);
+    updateAltHold(currentTimeUs);
     EXPECT_EQ(isAltHoldActive(), true);
 }
 
@@ -93,7 +96,7 @@ TEST(AltholdUnittest, altHoldTransitionsTestUnfinishedExitEnter)
 
     flightModeFlags |= ALT_HOLD_MODE;
     millisRW = 42;
-    updateAltHoldState(currentTimeUs);
+    updateAltHold(currentTimeUs);
     EXPECT_EQ(isAltHoldActive(), true);
 }
 
@@ -110,30 +113,24 @@ extern "C" {
     attitudeEulerAngles_t attitude;
     gpsSolutionData_t gpsSol;
 
-    float getAltitudeCm(void) {return 0.0f;}
-    float getAltitudeDerivative(void) {return 0.0f;}
+    float getAltitudeCm(void) { return 0.0f; }
+    float getAltitudeDerivative(void) { return 0.0f; }
     float getCosTiltAngle(void) { return 0.0f; }
-    float getGpsDataIntervalSeconds(void) { return 0.01f; }//    gpsSolutionData_t gpsSol;
-    uint16_t getGpsStamp(void){ return 0; }
-
+    float getGpsDataIntervalSeconds(void) { return 0.01f; }
+    float getGpsDataFrequencyHz(void) { return 10.0f; }
     float rcCommand[4];
 
-    bool isNewGPSDataAvailable(uint16_t* gpsStamp) {
+    bool gpsHasNewData(uint16_t* gpsStamp) {
         UNUSED(*gpsStamp);
         return true;
     }
 
-    float vector2Norm(const vector2_t *v) {
-       UNUSED(*v);
-       return 0.0f;
-    }
-
-void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pEWDist, float *pNSDist)
+void GPS_latLongVectors(const gpsLocation_t *from, const gpsLocation_t *to, float *latDist, float *lonDist)
     {
        UNUSED(from);
        UNUSED(to);
-       UNUSED(pEWDist);
-       UNUSED(pNSDist);
+       UNUSED(latDist);
+       UNUSED(lonDist);
     }
 
     void parseRcChannels(const char *input, rxConfig_t *rxConfig)
@@ -142,52 +139,8 @@ void GPS_distances(const gpsLocation_t *from, const gpsLocation_t *to, float *pE
         UNUSED(rxConfig);
     }
 
-    float pt1FilterGain(float f_cut, float dT)
-    {
-        UNUSED(f_cut);
-        UNUSED(dT);
-        return 0.0;
-    }
-
-    void pt1FilterInit(pt1Filter_t *filter, float k)
-    {
-        UNUSED(filter);
-        UNUSED(k);
-    }
-
-    void pt1FilterUpdateCutoff(pt1Filter_t *filter, float k)
-    {
-        UNUSED(filter);
-        UNUSED(k);
-    }
-
-    float pt1FilterApply(pt1Filter_t *filter, float input)
-    {
-        UNUSED(filter);
-        UNUSED(input);
-        return 0.0;
-    }
-
-    float pt3FilterGain(float f_cut, float dT)
-    {
-        UNUSED(f_cut);
-        UNUSED(dT);
-        return 0.0;
-    }
-    void pt3FilterInit(pt3Filter_t *filter, float k)
-    {
-        UNUSED(filter);
-        UNUSED(k);
-    }
-    void pt3FilterUpdateCutoff(pt3Filter_t *filter, float k)
-    {
-        UNUSED(filter);
-        UNUSED(k);
-    }
-    float pt3FilterApply(pt3Filter_t *filter, float input)
-    {
-        UNUSED(filter);
-        UNUSED(input);
-        return 0.0;
-    }
+    throttleStatus_e calculateThrottleStatus()
+{
+    return THROTTLE_LOW;
+}
 }
