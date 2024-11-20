@@ -97,7 +97,7 @@ vector2_t *vector2Normalize(vector2_t *result, const vector2_t *v)
 }
 
 // rotate 2d vector by angle
-// angle is in ragians and counterclockwise
+// angle is in radians and counterclockwise
 vector2_t* vector2Rotate(vector2_t *result, const vector2_t *v, const float angle)
 {
     vector2_t tmp;

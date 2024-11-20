@@ -31,7 +31,7 @@
 
 #include "flight/imu.h"
 #include "flight/position.h"
-#include "flight/pos_hold.h"
+#include "flight/pos_hold.h"   // POSHOLD_TASK_RATE_HZ
 #include "rx/rx.h"
 #include "sensors/gyro.h"
 
@@ -64,7 +64,7 @@ typedef struct {
 } pidAxis_t;
 
 typedef enum {
-    // axes are for ENU system
+    // axes are for ENU system; it is different from current BF code
     LON = 0,   // X, east
     LAT        // Y, north
 } axisEF_e;
@@ -72,12 +72,12 @@ typedef enum {
 typedef struct autopilotState_s {
     gpsLocation_t targetLocation;           // current target
     float sanityCheckDistance;
-    float upsampleGain;
+    float upsampleGain;                     // for upsampleBF; GPS to POSHOLD rate upsample
     float vaCutoff;                         // velocity + acceleration filter cutoff
     bool sticksActive;
     float maxAngle;
     vector2_t pidSumBF;                     // pid output, updated on each GPS update, rotated to body frame
-    pt3Filter_t upsampleBF[RP_AXIS_COUNT];    // upsampling filter
+    pt3Filter_t upsampleBF[RP_AXIS_COUNT];  // upsampling filter
     pidAxis_t pidAxis[EF_AXIS_COUNT];
 } autopilotState_t;
 
@@ -111,10 +111,9 @@ static void resetUpsampleFilters(void)
 }
 
 // get sanity distance based on speed
-// speed [cm/s]
-static inline float sanityCheckDistance(float speed)
+static inline float sanityCheckDistance(const float speedCmS)
 {
-    return fmaxf(1000.0f, speed * 2.0f);
+    return fmaxf(1000.0f, speedCmS * 2.0f);
 }
 
 void resetPositionControl(const gpsLocation_t *initialTargetLocation)
@@ -164,7 +163,7 @@ void resetAltitudeControl (void) {
 
 void altitudeControl(float targetAltitudeCm, float taskInterval, float targetAltitudeStep)
 {
-    const float verticalVelocity = getAltitudeDerivative();
+    const float verticalVelocityCmS = getAltitudeDerivative();
     const float altitudeErrorCm = targetAltitudeCm - getAltitudeCm();
     const float altitudeP = altitudeErrorCm * altitudePidCoeffs.Kp;
 
@@ -179,14 +178,14 @@ void altitudeControl(float targetAltitudeCm, float taskInterval, float targetAlt
     float dBoost = 1.0f;
     {
         const float startValue = 500.0f; // velocity at which D should start to increase
-        const float altDeriv = fabsf(verticalVelocity);
+        const float altDeriv = fabsf(verticalVelocityCmS);
         if (altDeriv > startValue) {
             const float ratio = altDeriv / startValue;
             dBoost = (3.0f * ratio - 2.0f) / ratio;
         }
     }
 
-    const float altitudeD = verticalVelocity * dBoost * altitudePidCoeffs.Kd;
+    const float altitudeD = verticalVelocityCmS * dBoost * altitudePidCoeffs.Kd;
 
     const float altitudeF = targetAltitudeStep * altitudePidCoeffs.Kf;
 
@@ -228,7 +227,7 @@ static void setTargetLocationAxis(const gpsLocation_t* newTargetLocation, axisEF
     } else {
         ap.targetLocation.lat = newTargetLocation->lat; // update North-South / latitude position
     }
-    ap.pidAxis[efAxisIdx].previousDistance = 0.0f; // and reset the previous distance to avoid D and A spikes
+    ap.pidAxis[efAxisIdx].previousDistance = 0.0f;      // and reset the previous distance to avoid D and A spikes
 }
 
 static void setTargetLocation(const gpsLocation_t* newTargetLocation)
@@ -241,7 +240,7 @@ static void setTargetLocation(const gpsLocation_t* newTargetLocation)
 bool positionControl(void)
 {
     unsigned debugAxis = gyroConfig()->gyro_filter_debug_axis;
-    static vector2_t debugGpsDistance = { 0 };   // keep last calculated distance for DEBUG
+    static vector2_t debugGpsDistance = { 0 };     // keep last calculated distance for DEBUG
     static vector2_t debugPidSumEF = { 0 };        // and last pidsum in EF
     static uint16_t gpsStamp = 0;
     if (gpsHasNewData(&gpsStamp)) {
@@ -264,7 +263,7 @@ bool positionControl(void)
         // update filters according to current GPS update rate
         const float vaGain = pt1FilterGain(ap.vaCutoff, gpsDataInterval);
         const float iTermLeakGain = 1.0f - pt1FilterGainFromDelay(2.5f, gpsDataInterval);   // 2.5s time constant
-        vector2_t pidSum = { 0 };       // P+I in loop, D+A added after axis loop (after limiting it)
+        vector2_t pidSum = { 0 };       // P+I in loop, D+A added after the axis loop (after limiting it)
         vector2_t pidDA;                // D+A
         for (axisEF_e pidAxisIdx = 0; ARRAYLEN(ap.pidAxis); pidAxisIdx++) {
             pidAxis_t *pidAxis = &ap.pidAxis[pidAxisIdx];
@@ -293,7 +292,7 @@ bool positionControl(void)
             // differentiate velocity another time to get acceleration
             float acceleration = (velocityFiltered - pidAxis->previousVelocity) * gpsDataFreq;
             pidAxis->previousVelocity = velocityFiltered;
-            // apply second filter to acceleration
+            // apply second filter to acceleration (acc is filtered twice)
             pt1FilterUpdateCutoff(&pidAxis->accelerationLpf, vaGain);
             const float accelerationFiltered = pt1FilterApply(&pidAxis->accelerationLpf, acceleration);
             const float pidA = accelerationFiltered * positionPidCoeffs.Kf;
@@ -372,9 +371,10 @@ bool positionControl(void)
 
     if (debugAxis < 2) {
         // this is different from @ctzsnooze version
-        // lattitude 
+        // debugAxis = 0: store longitude + roll
+        // debugAxis = 1: store latitude + pitch
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 1, lrintf(debugGpsDistance.v[debugAxis]));    // cm
-        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 2, lrintf(debugPidSumEF.v[debugAxis] * 10));  // deg * 10 
+        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 2, lrintf(debugPidSumEF.v[debugAxis] * 10));  // deg * 10
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 3, lrintf(autopilotAngle[debugAxis] * 10));   // deg * 10
     }
     return true;

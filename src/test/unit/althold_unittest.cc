@@ -125,7 +125,7 @@ extern "C" {
         return true;
     }
 
-    void GPS_distance2d(const gpsLocation_t */*from*/, const gpsLocation_t */*to*/, vector2_t* /*dest*/) { }
+    void GPS_distance2d(const gpsLocation_t* /*from*/, const gpsLocation_t* /*to*/, vector2_t* /*dest*/) { }
 
     void parseRcChannels(const char *input, rxConfig_t *rxConfig)
     {

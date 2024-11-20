@@ -1156,7 +1156,7 @@ extern "C" {
        UNUSED(bearing);
     }
 
-    void GPS_distance2d(const gpsLocation_t */*from*/, const gpsLocation_t */*to*/, vector2_t* /*dest*/) { }
+    void GPS_distance2d(const gpsLocation_t* /*from*/, const gpsLocation_t* /*to*/, vector2_t* /*dest*/) { }
 
     bool canUseGPSHeading;
     bool compassIsHealthy;
