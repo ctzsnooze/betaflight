@@ -1539,13 +1539,13 @@ case MSP_NAME:
 
 #ifdef USE_GPS_RESCUE
     case MSP_GPS_RESCUE:
-        sbufWriteU16(dst, autopilotConfig()->ap_max_angle);
+        sbufWriteU16(dst, apConfig()->ap_max_angle);
         sbufWriteU16(dst, gpsRescueConfig()->returnAltitudeM);
         sbufWriteU16(dst, gpsRescueConfig()->descentDistanceM);
         sbufWriteU16(dst, gpsRescueConfig()->groundSpeedCmS);
-        sbufWriteU16(dst, autopilotConfig()->ap_throttle_min);
-        sbufWriteU16(dst, autopilotConfig()->ap_throttle_max);
-        sbufWriteU16(dst, autopilotConfig()->ap_hover_throttle);
+        sbufWriteU16(dst, apConfig()->ap_throttle_min);
+        sbufWriteU16(dst, apConfig()->ap_throttle_max);
+        sbufWriteU16(dst, apConfig()->ap_hover_throttle);
         sbufWriteU8(dst,  gpsRescueConfig()->sanityChecks);
         sbufWriteU8(dst,  gpsRescueConfig()->minSats);
 
@@ -1561,13 +1561,13 @@ case MSP_NAME:
         break;
 
     case MSP_GPS_RESCUE_PIDS:
-        sbufWriteU16(dst, autopilotConfig()->ap_altitude_P);
-        sbufWriteU16(dst, autopilotConfig()->ap_altitude_I);
-        sbufWriteU16(dst, autopilotConfig()->ap_altitude_D);
+        sbufWriteU16(dst, apConfig()->ap_altitude_P);
+        sbufWriteU16(dst, apConfig()->ap_altitude_I);
+        sbufWriteU16(dst, apConfig()->ap_altitude_D);
         // altitude_F not implemented yet
-        sbufWriteU16(dst, autopilotConfig()->ap_position_P);
-        sbufWriteU16(dst, autopilotConfig()->ap_altitude_I);
-        sbufWriteU16(dst, autopilotConfig()->ap_altitude_D);
+        sbufWriteU16(dst, apConfig()->ap_position_P);
+        sbufWriteU16(dst, apConfig()->ap_altitude_I);
+        sbufWriteU16(dst, apConfig()->ap_altitude_D);
         sbufWriteU16(dst, gpsRescueConfig()->yawP);
         break;
 #endif
@@ -2876,13 +2876,13 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
 #ifdef USE_GPS
 #ifdef USE_GPS_RESCUE
     case MSP_SET_GPS_RESCUE:
-        autopilotConfigMutable()->ap_max_angle = sbufReadU16(src);
+        apConfigMutable()->ap_max_angle = sbufReadU16(src);
         gpsRescueConfigMutable()->returnAltitudeM = sbufReadU16(src);
         gpsRescueConfigMutable()->descentDistanceM = sbufReadU16(src);
         gpsRescueConfigMutable()->groundSpeedCmS = sbufReadU16(src);
-        autopilotConfigMutable()->ap_throttle_min = sbufReadU16(src);
-        autopilotConfigMutable()->ap_throttle_max = sbufReadU16(src);
-        autopilotConfigMutable()->ap_hover_throttle = sbufReadU16(src);
+        apConfigMutable()->ap_throttle_min = sbufReadU16(src);
+        apConfigMutable()->ap_throttle_max = sbufReadU16(src);
+        apConfigMutable()->ap_hover_throttle = sbufReadU16(src);
         gpsRescueConfigMutable()->sanityChecks = sbufReadU8(src);
         gpsRescueConfigMutable()->minSats = sbufReadU8(src);
         if (sbufBytesRemaining(src) >= 6) {
@@ -2903,13 +2903,13 @@ static mspResult_e mspProcessInCommand(mspDescriptor_t srcDesc, int16_t cmdMSP, 
         break;
 
     case MSP_SET_GPS_RESCUE_PIDS:
-        autopilotConfigMutable()->ap_altitude_P = sbufReadU16(src);
-        autopilotConfigMutable()->ap_altitude_I = sbufReadU16(src);
-        autopilotConfigMutable()->ap_altitude_D = sbufReadU16(src);
+        apConfigMutable()->ap_altitude_P = sbufReadU16(src);
+        apConfigMutable()->ap_altitude_I = sbufReadU16(src);
+        apConfigMutable()->ap_altitude_D = sbufReadU16(src);
         // altitude_F not included in msp yet
-        autopilotConfigMutable()->ap_position_P = sbufReadU16(src);
-        autopilotConfigMutable()->ap_position_I = sbufReadU16(src);
-        autopilotConfigMutable()->ap_position_D = sbufReadU16(src);
+        apConfigMutable()->ap_position_P = sbufReadU16(src);
+        apConfigMutable()->ap_position_I = sbufReadU16(src);
+        apConfigMutable()->ap_position_D = sbufReadU16(src);
         gpsRescueConfigMutable()->yawP = sbufReadU16(src);
         break;
 #endif

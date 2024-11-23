@@ -512,8 +512,6 @@ void initDescent(void)
 
 void descend(bool newGpsData)
 {
-    // zero yaw authority stops yawing when overshooting home, is set once, before entry to descent phase
-
     if (rescueState.intent.velocityAttenuator < 1.0f) { // acquire velocity over one second if not yet there
         rescueState.intent.velocityAttenuator += taskIntervalSeconds;
     }

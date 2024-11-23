@@ -42,5 +42,5 @@ typedef struct autopilotConfig_s {
     uint8_t ap_max_angle;
 } autopilotConfig_t;
 
-PG_DECLARE(autopilotConfig_t, autopilotConfig);
+PG_DECLARE(autopilotConfig_t, apConfig);
 

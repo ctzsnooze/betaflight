@@ -50,7 +50,7 @@ extern "C" {
 
     PG_REGISTER(accelerometerConfig_t, accelerometerConfig, PG_ACCELEROMETER_CONFIG, 0);
     PG_REGISTER(altHoldConfig_t, altHoldConfig, PG_ALTHOLD_CONFIG, 0);
-    PG_REGISTER(autopilotConfig_t, autopilotConfig, PG_AUTOPILOT, 0);
+    PG_REGISTER(autopilotConfig_t, apConfig, PG_AUTOPILOT, 0);
     PG_REGISTER(gyroConfig_t, gyroConfig, PG_GYRO_CONFIG, 0);
     PG_REGISTER(positionConfig_t, positionConfig, PG_POSITION, 0);
     PG_REGISTER(rcControlsConfig_t, rcControlsConfig, PG_RC_CONTROLS_CONFIG, 0);
@@ -127,23 +127,14 @@ extern "C" {
         return true;
     }
 
-void GPS_latLongVectors(const gpsLocation_t *from, const gpsLocation_t *to, float *latDist, float *lonDist)
-    {
-       UNUSED(from);
-       UNUSED(to);
-       UNUSED(latDist);
-       UNUSED(lonDist);
-    }
+    void GPS_distance2d(const gpsLocation_t* /*from*/, const gpsLocation_t* /*to*/, vector2_t* /*dest*/) { }
 
-    void parseRcChannels(const char *input, rxConfig_t *rxConfig)
-    {
+    void parseRcChannels(const char *input, rxConfig_t *rxConfig) {
         UNUSED(input);
         UNUSED(rxConfig);
     }
 
-
-    throttleStatus_e calculateThrottleStatus()
-{
-    return THROTTLE_LOW;
-}
+    throttleStatus_e calculateThrottleStatus() {
+        return THROTTLE_LOW;
+    }
 }

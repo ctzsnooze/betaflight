@@ -82,6 +82,7 @@ extern "C" {
     PG_REGISTER(gpsConfig_t, gpsConfig, PG_GPS_CONFIG, 0);
     PG_REGISTER(gpsRescueConfig_t, gpsRescueConfig, PG_GPS_RESCUE, 0);
     PG_REGISTER(positionConfig_t, positionConfig, PG_POSITION, 0);
+    PG_REGISTER(autopilotConfig_t, apConfig, PG_AUTOPILOT, 0);
 
     float rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
     uint16_t averageSystemLoadPercent = 0;
@@ -1163,18 +1164,7 @@ extern "C" {
        UNUSED(bearing);
     }
 
-void GPS_latLongVectors(const gpsLocation_t *from, const gpsLocation_t *to, float *latDist, float *lonDist)
-    {
-       UNUSED(from);
-       UNUSED(to);
-       UNUSED(latDist);
-       UNUSED(lonDist);
-    }
-
-    float vector2Norm(const vector2_t *v) {
-       UNUSED(*v);
-       return 0.0f;
-    }
+void GPS_distance2d(const gpsLocation_t* /*from*/, const gpsLocation_t* /*to*/, vector2_t* /*dest*/) { }
 
     bool gpsHasNewData(uint16_t* gpsStamp) {
         UNUSED(*gpsStamp);

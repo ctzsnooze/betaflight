@@ -2511,7 +2511,7 @@ void GPS_calc_longitude_scaling(int32_t lat)
 //
 static void GPS_calculateDistanceFlown(bool initialize)
 {
-    static gpsLocation_t lastLLH = {0, 0, 0};
+    static gpsLocation_t lastLLH = {0};
 
     if (initialize) {
         GPS_distanceFlownInCm = 0;
@@ -2592,13 +2592,12 @@ void GPS_calculateDistanceAndDirectionToHome(void)
     }
 }
 
-void GPS_latLongVectors(const gpsLocation_t *from, const gpsLocation_t *to, float *latDist, float *lonDist) {
-    if (latDist) {
-        *latDist = (float)(to->lat - from->lat) * EARTH_ANGLE_TO_CM;  // North-South distance, positive North
-    }
-    if (lonDist) {
-        *lonDist = (float)(to->lon - from->lon) * GPS_cosLat * EARTH_ANGLE_TO_CM; // East-West distance, positive East
-    }
+// return distance vector in local, cartesian ENU coordinates
+// note that parameter order is from, to
+void GPS_distance2d(const gpsLocation_t *from, const gpsLocation_t *to, vector2_t* distance)
+{
+    distance->x = (float)(to->lon - from->lon) * GPS_cosLat * EARTH_ANGLE_TO_CM; // East-West distance, positive East
+    distance->y = (float)(to->lat - from->lat) * EARTH_ANGLE_TO_CM;  // North-South distance, positive North
 }
 
 void onGpsNewData(void)
