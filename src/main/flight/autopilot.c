@@ -130,7 +130,7 @@ void resetPositionControl(const gpsLocation_t *initialTargetLocation, uint16_t t
         // clear anything stored in the filter at first call
         resetEFAxisParams(&ap.efAxis[i], 1.0f);
     }
-    const float taskInterval = 1.0f / taskRateHz;
+    const float taskInterval = HZ_TO_INTERVAL(taskRateHz);
     ap.upsampleLpfGain = pt3FilterGain(UPSAMPLING_CUTOFF_HZ, taskInterval);       // 5Hz, assuming 100Hz task rate
     resetUpsampleFilters();                  // clear anything from previous iteration
 }

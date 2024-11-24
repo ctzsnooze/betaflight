@@ -92,11 +92,12 @@ typedef struct {
     float lonFactor;
     float cmToEarthAngle;
     float initialClimbCm;
+    bool forceDisableMag;
 } rescueIntent_s;
 
 typedef struct {
     uint16_t groundSpeedCmS;
-    bool healthy;
+    bool gpsHealthy;
     float errorAngleDeg;
     float velocityToHomeCmS;
     float imuYawCogGain;
@@ -115,7 +116,6 @@ typedef struct {
 
 static const float taskIntervalSeconds = HZ_TO_INTERVAL(TASK_GPS_RESCUE_RATE_HZ); // i.e. 0.01 s
 static float rescueYaw;
-static bool disableMag = false;
 
 rescueState_s rescueState;
 
@@ -222,7 +222,7 @@ static void rescueAttainPosition(bool newGpsData)
     /**
         Heading / yaw controller
     */
-    float yawRate = rescueState.sensor.errorAngleDeg * gpsRescueConfig()->yawP * rescueState.intent.yawAttenuator / 10.0f;
+    float yawRate = rescueState.sensor.errorAngleDeg * rescueState.intent.yawAttenuator * gpsRescueConfig()->yawP * 0.1f;
     yawRate = constrainf(yawRate, -GPS_RESCUE_MAX_YAW_RATE, GPS_RESCUE_MAX_YAW_RATE);
     rescueYaw = yawRate * GET_DIRECTION(rcControlsConfig()->yaw_control_reversed);
     // (extern) rescueYaw is the yaw rate in deg/s to correct the heading error
@@ -233,7 +233,7 @@ static void rescueAttainPosition(bool newGpsData)
     */
     if (newGpsData) {
         if (rescueState.intent.targetVelocityCmS > 0.0f) {
-            // fly home or descend modes only
+            // only possible in fly home or descend modes
             // move target location along a path, step by step
             const float distanceToMove = rescueState.intent.targetVelocityCmS * getGpsDataIntervalSeconds();
             setLatLongSteps(); // update latitude and longitude step from current location to home at current target velocity
@@ -251,14 +251,22 @@ static void rescueAttainPosition(bool newGpsData)
     DEBUG_SET(DEBUG_GPS_RESCUE_TRACKING, 1, lrintf(rescueState.intent.targetVelocityCmS));
 }
 
+bool oneSecondPassed(timeUs_t currentTimeUs, timeUs_t *lastTimeUs) {
+    timeDelta_t deltaTime = cmpTimeUs(currentTimeUs, *lastTimeUs);
+    if (deltaTime >= 1000000) {
+        *lastTimeUs = currentTimeUs;
+        return true;
+    }
+    return false;
+}
+
 static void performSanityChecks(void)
 {
-    static timeUs_t previousTimeUs = 0; // Last time Stalled/LowSat was checked
-    static float prevAltitudeCm = 0.0f; // to calculate ascent or descent change
-    static float prevTargetAltitudeCm = 0.0f; // to calculate ascent or descent target change
-    static float previousDistanceToHomeCm = 0.0f; // to check that we are returning
-    static int8_t secondsLowSats = 0; // Minimum sat detection
-    static int8_t secondsDoingNothing; // Limit on doing nothing
+    static float prevAltitudeCm = 0.0f;            // to calculate ascent or descent change
+    static float prevTargetAltitudeCm = 0.0f;      // to calculate ascent or descent target change
+    static float previousDistanceToHomeCm = 0.0f;  // to check that we are returning
+    static int8_t secondsLowSats = 0;              // Minimum sat detection
+    static int8_t secondsDoingNothing;             // Limit on doing nothing
     const timeUs_t currentTimeUs = micros();
 
     if (rescueState.phase == RESCUE_IDLE) {
@@ -266,7 +274,6 @@ static void performSanityChecks(void)
         return;
     } else if (rescueState.phase == RESCUE_INITIALIZE) {
         // Initialize these variables each time a GPS Rescue is started
-        previousTimeUs = currentTimeUs;
         prevAltitudeCm = getAltitudeCm();
         prevTargetAltitudeCm = rescueState.intent.targetAltitudeCm;
         previousDistanceToHomeCm = GPS_distanceToHomeCm;
@@ -309,17 +316,15 @@ static void performSanityChecks(void)
     }
 
     // Check if GPS comms are healthy
-    // ToDo - check if we have an altitude reading; if we have Baro, we can use Landing mode for controlled descent without GPS
-    if (!rescueState.sensor.healthy) {
+    if (!rescueState.sensor.gpsHealthy) {
         rescueState.failure = RESCUE_GPSLOST;
     }
 
     //  Things that should run at a low refresh rate (such as flyaway detection, etc) will be checked at 1Hz
-    const timeDelta_t dTime = cmpTimeUs(currentTimeUs, previousTimeUs);
-    if (dTime < 1000000) { //1hz
+    static timeUs_t lastSanityCheck = 0;
+    if (!oneSecondPassed(currentTimeUs, &lastSanityCheck)) {
         return;
     }
-    previousTimeUs = currentTimeUs;
 
     // checks that we are getting closer to home.
     // if the quad is stuck, or if GPS data packets stop, there will be no change in distance to home
@@ -332,9 +337,9 @@ static void performSanityChecks(void)
         if (rescueState.intent.secondsFailing >= 30) {
 #ifdef USE_MAG
             //If there is an active mag, try again without it
-            if (compassEnabledAndCalibrated() && !disableMag) {
+            if (compassEnabledAndCalibrated() && !rescueState.intent.forceDisableMag) {
                 //Try again with mag disabled
-                disableMag = true;
+                rescueState.intent.forceDisableMag = true;
                 rescueState.intent.secondsFailing = 0;
             } else
 #endif
@@ -405,7 +410,7 @@ static void performSanityChecks(void)
 
 static void sensorUpdate(bool newGpsData)
 {
-    rescueState.sensor.healthy = gpsIsHealthy();
+    rescueState.sensor.gpsHealthy = gpsIsHealthy();
 
     static float prevDistanceToHomeCm = 0.0f;
     if (newGpsData) {
@@ -450,49 +455,28 @@ static void sensorUpdate(bool newGpsData)
 // 1. sensor not healthy - GPS data is not being received.
 // 2. GPS has no Home or 3D fix.
 // 3. We are relying on GPS for heading, and the IMU is not oriented by prior forward flight
-// 4. Number of GPS satellites is less than the minimum configured satellite count for 2s.
+// 4. Sat count < minimum configured or no 3D fix for at least 2s..
 // Note 1: cannot arm without the required number of sats, unless bypassed in CLI
-// Note 2: the sanity checks are separate, this just provides the OSD warning
+// Note 2: the sanity checks are separate, this just provides the OSD warning - maybe can be merged?
+
 static bool checkGPSRescueIsAvailable(void)
 {
     if (!gpsIsHealthy() || !STATE(GPS_FIX_HOME) || !isHeadingOK()) {
         return false;
     }
 
+    static int8_t secondsFailing = 0;
     const timeUs_t currentTimeUs = micros();
-    static timeUs_t previousTimeUs = 0;     // Last time LowSat was checked
-    static int8_t secondsLowSats = 0;       // Minimum sat failure counter
-    static bool lowsats = false;
-    static bool noGPSfix = false;
-    bool result = true;
 
     //  Check low sats / loss of 3D fix, once per second
-    const timeDelta_t dTime = cmpTimeUs(currentTimeUs, previousTimeUs);
-    if (dTime < 1000000) { //1hz
-        if (noGPSfix || lowsats) {
-            result = false;
-        }
-        return result;
+    static timeUs_t lastGpsRescueCheck = 0;
+    if (!oneSecondPassed(currentTimeUs, &lastGpsRescueCheck)) {
+        return secondsFailing < 3;
     }
 
-    previousTimeUs = currentTimeUs;
-
-    if (!STATE(GPS_FIX)) {
-        result = false;
-        noGPSfix = true;
-    } else {
-        noGPSfix = false;
-    }
-
-    secondsLowSats = constrain(secondsLowSats + ((gpsSol.numSat < GPS_MIN_SAT_COUNT) ? 1 : -1), 0, 2);
-    if (secondsLowSats == 2) {
-        lowsats = true;
-        result = false;
-    } else {
-        lowsats = false;
-    }
-
-    return result;
+    const bool failure = gpsSol.numSat < GPS_MIN_SAT_COUNT || !STATE(GPS_FIX);
+    secondsFailing = constrain(secondsFailing + (failure ? 1 : -1), 0, 3);
+    return secondsFailing < 3;
 }
 
 void disarmOnImpact(void)
@@ -548,7 +532,7 @@ void initialiseRescueValues (void)
     rescueState.sensor.velocityToHomeCmS = 0.0f;
     rescueState.intent.latFactor = 0.0f;
     rescueState.intent.lonFactor = 0.0f;
-    disableMag = false; // re-enable Mag on next rescue start even if it failed on a previous rescue
+    rescueState.intent.forceDisableMag = false; // re-enable Mag on next rescue start even if it failed on a previous rescue
 }
 
 void gpsRescueUpdate(void)
@@ -732,7 +716,7 @@ bool gpsRescueDisableMag(void)
 {
     // Enable mag on user request, but don't use it during fly home or if force disabled
     // Note that while flying home the course over ground from GPS provides a heading that is less affected by wind
-    return disableMag;
+    return rescueState.intent.forceDisableMag;
 }
 #endif
 #endif
