@@ -77,7 +77,7 @@ typedef struct autopilotState_s {
     float vaLpfCutoff;                                 // velocity + acceleration lowpass filter cutoff
     bool sticksActive;
     float maxAngle;
-    float iTermLeakGain;
+    int8_t axesMoving;
     vector2_t pidSumBodyFrame;                        // pid output, updated on each GPS update, rotated to body frame
     pt3Filter_t upsampleLpfBodyFrame[RP_AXIS_COUNT];
     efPidAxis_t efAxis[EF_AXIS_COUNT];
@@ -119,19 +119,20 @@ static inline float sanityCheckDistance(const float gpsGroundSpeedCmS)
     return fmaxf(1000.0f, gpsGroundSpeedCmS * 2.0f);
 }
 
-void resetPositionControl(const gpsLocation_t *initialTargetLocation)
+void resetPositionControl(const gpsLocation_t *initialTargetLocation, uint16_t taskRateHz)
 {
-    // from pos_hold.c when initiating position hold at target location
+    // from pos_hold.c (or other client) when initiating position hold at target location
     ap.targetLocation = *initialTargetLocation;
     ap.sticksActive = false;
     // set sanity check distance according to groundspeed at start, minimum of 10m
-    ap.iTermLeakGain = 0.0f;
     ap.sanityCheckDistance = sanityCheckDistance(gpsSol.groundSpeed);
     for (unsigned i = 0; i < ARRAYLEN(ap.efAxis); i++) {
-        // disable filter until first call
+        // clear anything stored in the filter at first call
         resetEFAxisParams(&ap.efAxis[i], 1.0f);
     }
-    resetUpsampleFilters(); // clear anything from previous iteration
+    const float taskInterval = 1.0f / taskRateHz;
+    ap.upsampleLpfGain = pt3FilterGain(UPSAMPLING_CUTOFF_HZ, taskInterval);       // 5Hz, assuming 100Hz task rate
+    resetUpsampleFilters();                  // clear anything from previous iteration
 }
 
 void autopilotInit(void)
@@ -149,8 +150,7 @@ void autopilotInit(void)
     positionPidCoeffs.Kd = cfg->ap_position_D * POSITION_D_SCALE;
     positionPidCoeffs.Kf = cfg->ap_position_A * POSITION_A_SCALE; // Kf used for acceleration
     // initialise filters with approximate filter gain
-    ap.upsampleLpfGain = pt3FilterGain(UPSAMPLING_CUTOFF_HZ, 0.01f); // 5Hz, assuming 100Hz task rate
-    // TO DO send the required task rate here from the client code
+    ap.upsampleLpfGain = pt3FilterGain(UPSAMPLING_CUTOFF_HZ, 0.01f); // 5Hz, assuming 100Hz task rate at init
     resetUpsampleFilters();
     // Initialise PT1 filters for earth frame axes latitude and longitude
     ap.vaLpfCutoff = cfg->ap_position_cutoff * 0.01f;
@@ -259,11 +259,7 @@ void (posControlOnNewGpsData) (void)
     vector2_t gpsDistance;
     GPS_distance2d(&gpsSol.llh, &ap.targetLocation, &gpsDistance); // X is EW/lon, Y is NS/lat
     debugGpsDistance = gpsDistance;
-
-    if (ap.iTermLeakGain == 0.0f) {
-        const float leakTimeConstant = 2.5f;   // 2.5s time constant, set this only once, it's not critical
-        ap.iTermLeakGain = pt1FilterGainFromDelay(leakTimeConstant, gpsDataInterval);
-    }
+    ap.distanceNormCm = vector2Norm(&gpsDistance);
 
     // update filters according to current GPS update rate
     const float vaGain = pt1FilterGain(ap.vaLpfCutoff, gpsDataInterval);
@@ -281,25 +277,20 @@ void (posControlOnNewGpsData) (void)
         pidSum.v[efAxisIdx] += pidP;
 
         // ** I **
-        // no accumulation while stopping,
+        // only add to iTerm while in hold phase
         efAxis->integral += efAxis->isStopping ? 0.0f : axisDistance * gpsDataInterval;
-
-        // maybe limit I ? ... ? no more than 20 degrees of angle from iTerm alone
-        // efAxis->integral += efAxis->isStopping || fabsf(efAxis->integral) > 200.0f ? 0.0f : efAxis->distance * ap.gpsDataInterval;
-
-        // no iTerm in GPS Rescue mode for now but perhaps an effective limiter may work better
-        const float pidI = FLIGHT_MODE(GPS_RESCUE_MODE) ? 0.0f : efAxis->integral * positionPidCoeffs.Ki;
+        const float pidI = efAxis->integral * positionPidCoeffs.Ki;
         pidSum.v[efAxisIdx] += pidI;
 
         // ** D ** //
         // Velocity derived from GPS position works better than module supplied GPS Speed and Heading information
+
         const float velocity = (axisDistance - efAxis->previousDistance) * gpsDataFreq; // cm/s
         efAxis->previousDistance = axisDistance;
         pt1FilterUpdateCutoff(&efAxis->velocityLpf, vaGain);
         const float velocityFiltered = pt1FilterApply(&efAxis->velocityLpf, velocity);
         float pidD = velocityFiltered * positionPidCoeffs.Kd;
 
-        // ** A ** //
         // differentiate velocity another time to get acceleration
         float acceleration = (velocityFiltered - efAxis->previousVelocity) * gpsDataFreq;
         efAxis->previousVelocity = velocityFiltered;
@@ -324,19 +315,33 @@ void (posControlOnNewGpsData) (void)
                 const int8_t llhAxisInv = 1 - efAxisIdx; // because we have Lat first in gpsLocation_t, but efAxisIdx handles lon first.
                 ap.targetLocation.coords[llhAxisInv] = gpsSol.llh.coords[llhAxisInv]; // forcing P to zero
                 efAxis->previousDistance = 0.0f;                                      // ensuring no D jump from the updated location
+                ap.axesMoving -= 1; // count each axis when it 'stops'
+                if (ap.axesMoving <= 0) {
+                    ap.sanityCheckDistance = sanityCheckDistance(1000); // when last axis has stopped moving, reset the sanity distance to 10m default
+                }
                 efAxis->isStopping = false;
             }
         }
         pidDA.v[efAxisIdx] = pidD + pidA;    // save DA here, processed after axis loop
         if (debugAxis == efAxisIdx) {
-            DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 0, lrintf(ap.distanceNormCm));   // same for both axes
+            DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 1, lrintf(debugGpsDistance.v[debugAxis])); // cm error for this axis
             DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 4, lrintf(pidP * 10));
             DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 5, lrintf(pidI * 10));
             DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 6, lrintf(pidD * 10));
             DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 7, lrintf(pidA * 10));
-            DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 7, lrintf(ap.distanceNormCm));
         }
     } // end for loop
+
+    {
+        // limit sum of D and A per axis based on total DA vector length, otherwise can be too aggressive when starting at speed
+        // limit is 35 degrees from D and A alone, arbitrary value.  20 is a bit too low, allows a lot of overshoot
+        // note: an angle of more than 35 degrees can still be achieved as P and I grow
+        const float maxDAAngle = 35.0f; // D+A limit in degrees; arbitrary angle
+        const float mag = vector2Norm(&pidDA);
+        if (mag > maxDAAngle) {
+            vector2Scale(&pidDA, &pidDA, maxDAAngle / mag);
+        }
+    }
 
     // add constrained DA to sum
     vector2Add(&pidSum, &pidSum, &pidDA);
@@ -350,9 +355,9 @@ void (posControlOnNewGpsData) (void)
         ap.targetLocation = gpsSol.llh;
         // keep updating sanity check distance while sticks are out because speed may get high
         ap.sanityCheckDistance = sanityCheckDistance(gpsSol.groundSpeed);
-        // ** TO DO : once stopped, sanityCheckDistance should be set back to lower (default) value
+        ap.axesMoving = 2; // keep the counter at 2 while sticks are moving
     } else {
-       // ** Rotate pid Sum to body frame, and convert it into pitch and roll **
+        // ** Rotate pid Sum to body frame, and convert it into pitch and roll **
         // attitude.values.yaw increases clockwise from north
         // PID is running in ENU, adapt angle (to 0deg = EAST);
         //  rotation is from EarthFrame to BodyFrame, no change of sign from heading
@@ -372,9 +377,10 @@ void (posControlOnNewGpsData) (void)
     if (debugAxis < 2) {
         // debugAxis = 0: store longitude + roll
         // debugAxis = 1: store latitude + pitch
-        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 1, lrintf(debugGpsDistance.v[debugAxis]));    // cm
+        DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 0, lrintf(ap.distanceNormCm));                // absolute distance from target in cm
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 2, lrintf(debugPidSumEF.v[debugAxis] * 10));  // deg * 10
         DEBUG_SET(DEBUG_AUTOPILOT_POSITION, 3, lrintf(autopilotAngle[debugAxis] * 10));   // deg * 10
+        DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 7, lrintf(ap.distanceNormCm));
     }
 }
 

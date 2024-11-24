@@ -202,7 +202,7 @@ static void rescueAttainPosition(bool newGpsData)
         }
         // initialise the required autopilot functions
         resetAltitudeControl();
-        resetPositionControl(&gpsSol.llh); // enables position hold at current location with hard stop
+        resetPositionControl(&gpsSol.llh, TASK_GPS_RESCUE_RATE_HZ); // enables position hold at current location with hard stop
         return;
 
      default:
