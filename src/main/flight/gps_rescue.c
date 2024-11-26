@@ -88,8 +88,7 @@ typedef struct {
     float velocityAttenuator;
     float proximityAttenuator;
     float disarmThreshold;
-    float latFactor;
-    float lonFactor;
+    vector2_t lonLatSteps;
     float cmToEarthAngle;
     float initialClimbCm;
     bool forceDisableMag;
@@ -159,8 +158,9 @@ static void setLatLongSteps(void)
         directionToHomeDegrees += 360;
     }
     const float directionToHomeRadians = DEGREES_TO_RADIANS(directionToHomeDegrees);
-    rescueState.intent.latFactor = cos_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle; // approx 0.0898 lat units per cm at equator
-    rescueState.intent.lonFactor = sin_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle / getGpsCosLat();
+
+    rescueState.intent.lonLatSteps.v[0] = sin_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle / getGpsCosLat(); // Longitude (East)
+    rescueState.intent.lonLatSteps.v[1] = cos_approx(directionToHomeRadians) * rescueState.intent.cmToEarthAngle;  // Latitude (North)
 }
 
 static bool isHeadingOK(void)
@@ -237,14 +237,13 @@ static void rescueAttainPosition(bool newGpsData)
             // move target location along a path, step by step
             const float distanceToMove = rescueState.intent.targetVelocityCmS * getGpsDataIntervalSeconds();
             setLatLongSteps(); // update latitude and longitude step from current location to home at current target velocity
-            const int32_t latStep = distanceToMove * rescueState.intent.latFactor;
-            const int32_t lonStep = distanceToMove * rescueState.intent.lonFactor;
+            vector2Scale(&rescueState.intent.lonLatSteps, &rescueState.intent.lonLatSteps, distanceToMove);
             // send steps to update the target location in autopilot.c 
-            moveTargetLocation(latStep, lonStep);
+            moveTargetLocation(rescueState.intent.lonLatSteps);
             // run the autopilot function that calculates earth frame PID sums and converts to pitch and roll values
             // must have an accurate aircraft heading estimate from the IMU
-            posControlOnNewGpsData();
         }
+        posControlOnNewGpsData(); // hold position if zero set velocity, otherwise move at target velocity
     }
     // upsample the pitch and roll setpoints for pid.c, at gps_rescue task rate
     posControlOutput();
@@ -436,8 +435,8 @@ static void sensorUpdate(bool newGpsData)
 
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 0, lrintf(rescueState.intent.targetVelocityCmS)); // target velocity to home
     DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 1, lrintf(rescueState.sensor.velocityToHomeCmS)); // target velocity to home
-    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 2, lrintf(rescueState.intent.latFactor * 100.0f)); // all unused at present
-    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 3, lrintf(rescueState.intent.lonFactor * 100.0f)); // all unused at present
+    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 2, lrintf(rescueState.intent.lonLatSteps.v[0] * 100.0f)); // longitude step
+    DEBUG_SET(DEBUG_GPS_RESCUE_VELOCITY, 3, lrintf(rescueState.intent.lonLatSteps.v[1] * 100.0f)); // latitude step
 
     DEBUG_SET(DEBUG_GPS_RESCUE_HEADING, 0, lrintf(rescueState.sensor.velocityToHomeCmS));
     DEBUG_SET(DEBUG_GPS_RESCUE_HEADING, 1, gpsSol.groundCourse);            // deg * 10
@@ -530,8 +529,7 @@ void initialiseRescueValues (void)
     rescueState.intent.targetVelocityCmS = 0.0f; // stop the quad immediately
     rescueState.intent.targetAltitudeStepCm = 0.0f;
     rescueState.sensor.velocityToHomeCmS = 0.0f;
-    rescueState.intent.latFactor = 0.0f;
-    rescueState.intent.lonFactor = 0.0f;
+    vector2Zero(&rescueState.intent.lonLatSteps);
     rescueState.intent.forceDisableMag = false; // re-enable Mag on next rescue start even if it failed on a previous rescue
 }
 

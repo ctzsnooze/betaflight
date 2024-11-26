@@ -101,15 +101,16 @@ static void resetEFAxisFilters(efPidAxis_t* efAxis, float vaGain)
 void resetEFAxisParams(efPidAxis_t *efAxis, const float vaGain)
 {
     // at start only
+    efAxis->integral = 0.0f;
     resetEFAxisFilters(efAxis, vaGain);
     efAxis->isStopping = true; // Enter starting (deceleration) 'phase'
-    efAxis->integral = 0.0f;
 }
 
-static void resetUpsampleFilters(void)
+static void resetOutput(void)
 {
-     for (unsigned i = 0; i < ARRAYLEN(ap.upsampleLpfBodyFrame); i++) {
-         pt3FilterInit(&ap.upsampleLpfBodyFrame[i], ap.upsampleLpfGain);
+    vector2Zero(&ap.pidSumBodyFrame); // reset the pidSum
+    for (unsigned i = 0; i < ARRAYLEN(ap.upsampleLpfBodyFrame); i++) {
+        pt3FilterInit(&ap.upsampleLpfBodyFrame[i], ap.upsampleLpfGain); // reset the filter accumulators
     }
 }
 
@@ -121,7 +122,7 @@ static inline float sanityCheckDistance(const float gpsGroundSpeedCmS)
 
 void resetPositionControl(const gpsLocation_t *initialTargetLocation, uint16_t taskRateHz)
 {
-    // from pos_hold.c (or other client) when initiating position hold at target location
+    // from pos_hold.c or gps_rescue when initiating position hold at an initial location
     ap.targetLocation = *initialTargetLocation;
     ap.sticksActive = false;
     // set sanity check distance according to groundspeed at start, minimum of 10m
@@ -131,8 +132,8 @@ void resetPositionControl(const gpsLocation_t *initialTargetLocation, uint16_t t
         resetEFAxisParams(&ap.efAxis[i], 1.0f);
     }
     const float taskInterval = HZ_TO_INTERVAL(taskRateHz);
-    ap.upsampleLpfGain = pt3FilterGain(UPSAMPLING_CUTOFF_HZ, taskInterval);       // 5Hz, assuming 100Hz task rate
-    resetUpsampleFilters();                  // clear anything from previous iteration
+    ap.upsampleLpfGain = pt3FilterGain(UPSAMPLING_CUTOFF_HZ, taskInterval);
+    resetOutput(); // clear anything from previous iteration
 }
 
 void autopilotInit(void)
@@ -151,7 +152,7 @@ void autopilotInit(void)
     positionPidCoeffs.Kf = cfg->ap_position_A * POSITION_A_SCALE; // Kf used for acceleration
     // initialise filters with approximate filter gain
     ap.upsampleLpfGain = pt3FilterGain(UPSAMPLING_CUTOFF_HZ, 0.01f); // 5Hz, assuming 100Hz task rate at init
-    resetUpsampleFilters();
+    resetOutput();
     // Initialise PT1 filters for earth frame axes latitude and longitude
     ap.vaLpfCutoff = cfg->ap_position_cutoff * 0.01f;
     const float vaGain = pt1FilterGain(ap.vaLpfCutoff,  0.1f); // assume 10Hz GPS connection at start; value is overwritten before first filter use
@@ -228,22 +229,13 @@ void setSticksActiveStatus(bool areSticksActive)
     ap.sticksActive = areSticksActive;
 }
 
-void moveTargetLocation(int32_t latStep, int32_t lonStep)
+void moveTargetLocation(vector2_t lonLatSteps)
 {
-    ap.targetLocation.lat += ap.efAxis[LAT].isStopping ? 0 : latStep;
-    ap.targetLocation.lon += ap.efAxis[LON].isStopping ? 0 : lonStep;
+    for (unsigned i = 0; i < ARRAYLEN(ap.efAxis); i++) {
+        ap.targetLocation.coords[i] += ap.efAxis[i].isStopping ? 0 : (int32_t)(lonLatSteps.v[i]);
+    }
     // client runs this function, once position hold is initiated, to provide stepwise position change ie velocity control
     // in GPS Rescue, steps reflect requested velocity, which will be zero until rotation is complete
-}
-
-void setTargetLocationByAxis(const gpsLocation_t* newTargetLocation, axisEF_e efAxisIdx)
-// not used at present but needed by upcoming GPS code
-{
-    if (efAxisIdx == LON) {
-        ap.targetLocation.lon = newTargetLocation->lon; // update East-West / / longitude position
-    } else {
-        ap.targetLocation.lat = newTargetLocation->lat; // update North-South / latitude position
-    }
 }
 
 void (posControlOnNewGpsData) (void)
