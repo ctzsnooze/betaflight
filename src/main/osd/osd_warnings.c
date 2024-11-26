@@ -225,8 +225,7 @@ void renderOsdWarning(char *warningText, bool *blinking, uint8_t *displayAttr)
     if (osdWarnGetState(OSD_WARNING_GPS_RESCUE_UNAVAILABLE) &&
        ARMING_FLAG(ARMED) &&
        gpsRescueIsConfigured() &&
-//       !gpsRescueIsDisabled() &&
-// removed this because otherwise if you 'miss' the rescue off warning you get nothing, and many people 
+       !gpsRescueIsDisabled() &&
        !gpsRescueIsAvailable()) {
         tfp_sprintf(warningText, "RESCUE N/A");
         *displayAttr = DISPLAYPORT_SEVERITY_WARNING;
@@ -238,7 +237,6 @@ void renderOsdWarning(char *warningText, bool *blinking, uint8_t *displayAttr)
        ARMING_FLAG(ARMED) &&
        gpsRescueIsConfigured() &&
        gpsRescueIsDisabled()) {                 // no home point set on arming
-
         statistic_t *stats = osdGetStats();
         if (cmpTimeUs(stats->armed_time, OSD_GPS_RESCUE_DISABLED_WARNING_DURATION_US) < 0) {
             tfp_sprintf(warningText, "RESCUE OFF");
@@ -247,7 +245,6 @@ void renderOsdWarning(char *warningText, bool *blinking, uint8_t *displayAttr)
             return;
         }
     }
-
 #endif // USE_GPS_RESCUE
 
 #ifdef USE_POS_HOLD_MODE
