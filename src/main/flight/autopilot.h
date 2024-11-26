@@ -35,4 +35,4 @@ bool positionControl(void);
 
 bool isBelowLandingAltitude(void);
 float getAutopilotThrottle(void);
-bool isAutopilotActive(void);
+bool isAutopilotInControl(void);
