@@ -4997,17 +4997,16 @@ static void cliRcSmoothing(const char *cmdName, char *cmdline)
     UNUSED(cmdName);
     UNUSED(cmdline);
     rcSmoothingFilter_t *rcSmoothingData = getRcSmoothingData();
-    cliPrint("# RC Smoothing Type: ");
-    if (rxConfig()->rc_smoothing_mode) {
-        cliPrintLine("FILTER");
-        if (rcSmoothingAutoCalculate()) {
-            cliPrint("# Detected Rx frequency: ");
-            if (getRxRateValid()) {
-                cliPrintLinef("%dHz", lrintf(getCurrentRxRateHz()));
-            } else {
-                cliPrintLine("NO SIGNAL");
-            }
-        }
+    if (getRxRateValid()) {
+        cliPrint("# Detected Rx frequency: ");
+        cliPrintLinef("%dHz", lrintf(getCurrentRxRateHz()));
+    } else {
+        cliPrintLine("NO SIGNAL");
+    }
+
+    cliPrint("# RC Smoothing: ");
+    if (rxConfig()->use_rc_smoothing) {
+        cliPrintLine("ON");
         cliPrintf("# Active setpoint and FF cutoff: %dhz ", rcSmoothingData->setpointCutoffFrequency);
         if (rcSmoothingData->setpointCutoffSetting) {
             cliPrintLine("(manual)");
