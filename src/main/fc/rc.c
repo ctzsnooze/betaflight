@@ -62,7 +62,7 @@ typedef float (applyRatesFn)(const int axis, float rcCommandf, const float rcCom
 
 static float rawSetpoint[XYZ_AXIS_COUNT];
 
-static float setpointRate[3], rcDeflection[3], rcDeflectionAbs[3]; // deflection range -1 to 1
+static float setpointSmoothed[XYZ_AXIS_COUNT], rcDeflection[XYZ_AXIS_COUNT], rcDeflectionAbs[XYZ_AXIS_COUNT]; // deflection range -1 to 1
 static float maxRcDeflectionAbs;
 
 static bool reverseMotors = false;
@@ -88,8 +88,8 @@ enum {
 #ifdef USE_FEEDFORWARD
 static feedforwardData_t feedforwardData;
 
-static float feedforwardSmoothed[3];
-static float feedforwardRaw[3];
+static float feedforwardSmoothed[XYZ_AXIS_COUNT];
+static float feedforwardRaw[XYZ_AXIS_COUNT];
 static uint16_t feedforwardAveraging;
 typedef struct laggedMovingAverageCombined_s {
     laggedMovingAverage_t filter;
@@ -111,18 +111,19 @@ float getFeedforward(int axis)
 
 #ifdef USE_RC_SMOOTHING_FILTER
 static FAST_DATA_ZERO_INIT rcSmoothingFilter_t rcSmoothingData;
+static float rcDeflectionSmoothed[XYZ_AXIS_COUNT];
 #endif // USE_RC_SMOOTHING_FILTER
 
 float getSetpointRate(int axis)
 {
 #ifdef USE_RC_SMOOTHING_FILTER
-    return setpointRate[axis];
+    return setpointSmoothed[axis];
 #else
     return rawSetpoint[axis];
 #endif
 }
 
-static float maxRcRate[3];
+static float maxRcRate[XYZ_AXIS_COUNT];
 float getMaxRcRate(int axis)
 {
     return maxRcRate[axis];
@@ -130,8 +131,18 @@ float getMaxRcRate(int axis)
 
 float getRcDeflection(int axis)
 {
-    return rcDeflection[axis]; // smoothed in horizon if rc moothing enabled
+#ifdef USE_RC_SMOOTHING_FILTER
+    return rcDeflectionSmoothed[axis];
+#else
+    return rcDeflection[axis];
+#endif
 }
+
+float getRcDeflectionRaw(int axis)
+{
+    return rcDeflection[axis];
+}
+
 float getRcDeflectionAbs(int axis)
 {
     return rcDeflectionAbs[axis];
@@ -362,7 +373,7 @@ static FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *
         const float pt3K_SP = pt3FilterGain(setpointCutoffFrequency, dT);
 
         for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
-            pt3FilterUpdateCutoff(&smoothingData->filterSetpoint[axis], pt3K_SP);
+            pt3FilterUpdateCutoff(&smoothingData->filterRC[axis], pt3K_SP);
             pt3FilterUpdateCutoff(&smoothingData->filterFeedforward[axis], pt3K_SP);
         }
     }
@@ -372,7 +383,7 @@ static FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *
         smoothingData->throttleCutoffFrequency = throttleCutoffFrequency;
         const float pt3K_Thr = pt3FilterGain(throttleCutoffFrequency, dT);
 
-        pt3FilterUpdateCutoff(&smoothingData->filterSetpoint[THROTTLE], pt3K_Thr);
+        pt3FilterUpdateCutoff(&smoothingData->filterRC[THROTTLE], pt3K_Thr);
     }
 
     DEBUG_SET(DEBUG_RC_SMOOTHING, 1, lrintf(smoothedRxRateHz));
@@ -393,7 +404,6 @@ if (isRxDataNew) {
         rxDataToSmooth[i] = (i == THROTTLE) ? rcCommand[i] : rawSetpoint[i];
 
         if (i < THROTTLE) {
-         feedforwardSmoothed[i] = feedforwardRaw[i]; // load un-smoothed feedforward
             DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rxDataToSmooth[i]));
         } else {
             DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rxDataToSmooth[i]) - 1000);
@@ -401,24 +411,34 @@ if (isRxDataNew) {
     }
 }
 
+// Copy RC deflections for Horizon mode smoothing
+    for (int i = FD_ROLL; i <= FD_YAW; i++) {
+        rcDeflectionSmoothed[i] = rcDeflection[i];
+        DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rxDataToSmooth[i]));
+    }
+
     if (useRcSmoothing) {
         for (int i = 0; i < PRIMARY_CHANNEL_COUNT; i++) {
-            float *dst = (i == THROTTLE) ? &rcCommand[i] : &setpointRate[i];
+            float *dst = (i == THROTTLE) ? &rcCommand[i] : &setpointSmoothed[i];
 
-            *dst = pt3FilterApply(&rcSmoothingData.filterSetpoint[i], rxDataToSmooth[i]);
+            *dst = pt3FilterApply(&rcSmoothingData.filterRC[i], rxDataToSmooth[i]);
 
             if (i < FD_YAW) { // For RPY axes
                 feedforwardSmoothed[i] = pt3FilterApply(&rcSmoothingData.filterFeedforward[i], feedforwardRaw[i]);
 
-                if (FLIGHT_MODE(HORIZON_MODE)) {
-                    rcDeflection[i] = pt3FilterApply(&rcSmoothingData.filterRcDeflection[i], rcDeflection[i]);
+                if (FLIGHT_MODE(HORIZON_MODE &&i < FD_YAW)) {
+                    rcDeflectionSmoothed[i] = pt3FilterApply(&rcSmoothingData.filterRcDeflection[i], rcDeflection[i]);
                 }
             }
         }
     } else {
-        // --- copy raw values directly when smoothing is disabled ---
+        // copy original values directly when smoothing is disabled, throttle remains unchanged
+        
         for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
-            setpointRate[axis] = rawSetpoint[axis];
+            setpointSmoothed[axis] = rxDataToSmooth[axis];
+            
+            feedforwardSmoothed[axis] = feedforwardRaw[axis];
+            rcDeflectionSmoothed[axis] = rcDeflection[axis];
         }
     }
 } // closes processRcSmoothingFilters
@@ -772,7 +792,8 @@ FAST_CODE_NOINLINE void updateRcCommands(void)
 void resetYawAxis(void)
 {
     rcCommand[YAW] = 0;
-    setpointRate[YAW] = 0;
+    setpointSmoothed[YAW] = 0;
+    rawSetpoint[YAW]= 0;
 }
 
 bool isMotorsReversed(void)
