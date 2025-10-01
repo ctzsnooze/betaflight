@@ -398,7 +398,7 @@ static FAST_CODE void processRcSmoothingFilters(void)
 
     static FAST_DATA_ZERO_INIT float rxDataToSmooth[PRIMARY_CHANNEL_COUNT];
 
-// --- Load new values only on new RX data ---
+// --- when we get new RX data, store the original values in rxDataToSmooth[] ---
 if (isRxDataNew) {
     for (int i = 0; i < PRIMARY_CHANNEL_COUNT; i++) {
         rxDataToSmooth[i] = (i == THROTTLE) ? rcCommand[i] : rawSetpoint[i];
@@ -411,9 +411,8 @@ if (isRxDataNew) {
     }
 }
 
-// Copy RC deflections for Horizon mode smoothing
     for (int i = FD_ROLL; i <= FD_YAW; i++) {
-        rcDeflectionSmoothed[i] = rcDeflection[i];
+    // write debugs
         DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rxDataToSmooth[i]));
     }
 
@@ -423,7 +422,7 @@ if (isRxDataNew) {
 
             *dst = pt3FilterApply(&rcSmoothingData.filterRC[i], rxDataToSmooth[i]);
 
-            if (i < FD_YAW) { // For RPY axes
+            if (i <= FD_YAW) { // For RPY axes
                 feedforwardSmoothed[i] = pt3FilterApply(&rcSmoothingData.filterFeedforward[i], feedforwardRaw[i]);
 
                 if (FLIGHT_MODE(HORIZON_MODE &&i < FD_YAW)) {
@@ -432,7 +431,7 @@ if (isRxDataNew) {
             }
         }
     } else {
-        // copy original values directly when smoothing is disabled, throttle remains unchanged
+        // copy original values directly, when smoothing is disabled.
         
         for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
             setpointSmoothed[axis] = rxDataToSmooth[axis];
@@ -441,7 +440,7 @@ if (isRxDataNew) {
             rcDeflectionSmoothed[axis] = rcDeflection[axis];
         }
     }
-} // closes processRcSmoothingFilters
+} // end processRcSmoothingFilters
 
 #endif // USE_RC_SMOOTHING_FILTER
 
