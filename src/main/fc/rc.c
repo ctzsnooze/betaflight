@@ -360,13 +360,9 @@ static FAST_CODE_NOINLINE void updateFeedforwardSmoothingCutoffs(const pidRuntim
 
 #ifdef USE_RC_SMOOTHING_FILTER
 
-
-static FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *smoothingData); // forward declaration
-
-
 static FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *smoothingData)
 {
-    // Calculate RC smoothing filter gain parameters on init and when rxrate changes significantly
+    // Calculate RC smoothing filter gain parameters on init and when rxrate changes significantly via processRcCommand
 
     const bool autoRPYSmoothing      = (smoothingData->setpointCutoffSetting == 0);
     const bool autoThrottleSmoothing = (smoothingData->throttleCutoffSetting == 0);
@@ -401,15 +397,16 @@ static FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *
 }
 
 
-// --  filter the rc values  if rc smoothing is enabled
 static FAST_CODE void processRcSmoothingFilters(void)
-{
 
-    if (rxConfig()->use_rc_smoothing) {
+{
+//--filter  the rc related values at pid loop rate  if rc smoothing is enabled
+const bool useRcSmoothing = rxConfig()->use_rc_smoothing;
+    if (useRcSmoothing) {
     // Store  the last received channel values to feed into the PT3 filters
     static FAST_DATA_ZERO_INIT float rxDataToSmooth[PRIMARY_CHANNEL_COUNT];
 
-    // --- Load new values only on new RX data ---
+    // When we get new RX data,Load new values to smooth into smoothingData[]
         if (isRxDataNew) {
             for (int i = 0; i < PRIMARY_CHANNEL_COUNT; i++) {
                 // For throttle, use rcCommand directly; otherwise, use raw setpoints
@@ -425,13 +422,12 @@ static FAST_CODE void processRcSmoothingFilters(void)
         }
 
 
-        // --- Apply PT3 smoothing every PID loop ---
+       
         for (int i = 0; i < PRIMARY_CHANNEL_COUNT; i++) {
-            // smoothed rcCommand goes back into rcCommand,
-            // smoothed raw RPYsetpoints RPY setpoints go to setpointRates
-            float *dst = (i == THROTTLE) ? &rcCommand[i] : &setpointRate[i];
+        
+            float *dst = (i == THROTTLE) ? &rcCommand[i] : &setpointRate[i];// smoothed rcCommand goes back into rcCommand,moothed raw RPYsetpoints RPY setpoints go to setpointRates
     
-            // Apply smoothing filter
+            // Apply smoothing filter to the smoothingData values,  every pid loop
             *dst = pt3FilterApply(&rcSmoothingData.filterSetpoint[i], rxDataToSmooth[i]);
         }
     }
