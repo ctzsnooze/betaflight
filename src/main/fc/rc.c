@@ -111,7 +111,6 @@ float getFeedforward(int axis)
 
 #ifdef USE_RC_SMOOTHING_FILTER
 static FAST_DATA_ZERO_INIT rcSmoothingFilter_t rcSmoothingData;
-static float rcDeflectionSmoothed[3];
 #endif // USE_RC_SMOOTHING_FILTER
 
 float getSetpointRate(int axis)
@@ -131,18 +130,8 @@ float getMaxRcRate(int axis)
 
 float getRcDeflection(int axis)
 {
-#ifdef USE_RC_SMOOTHING_FILTER
-    return rcDeflectionSmoothed[axis];
-#else
-    return rcDeflection[axis];
-#endif
+    return rcDeflection[axis]; // smoothed in horizon if rc moothing enabled
 }
-
-float getRcDeflectionRaw(int axis)
-{
-    return rcDeflection[axis];
-}
-
 float getRcDeflectionAbs(int axis)
 {
     return rcDeflectionAbs[axis];
@@ -404,18 +393,13 @@ if (isRxDataNew) {
         rxDataToSmooth[i] = (i == THROTTLE) ? rcCommand[i] : rawSetpoint[i];
 
         if (i < THROTTLE) {
+         feedforwardSmoothed[i] = feedforwardRaw[i]; // load un-smoothed feedforward
             DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rxDataToSmooth[i]));
         } else {
             DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rxDataToSmooth[i]) - 1000);
         }
     }
 }
-
-// Copy RC deflections for Horizon mode smoothing
-    for (int i = FD_ROLL; i <= FD_YAW; i++) {
-        rcDeflectionSmoothed[i] = rcDeflection[i];
-        DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rxDataToSmooth[i]));
-    }
 
     if (useRcSmoothing) {
         for (int i = 0; i < PRIMARY_CHANNEL_COUNT; i++) {
@@ -427,7 +411,7 @@ if (isRxDataNew) {
                 feedforwardSmoothed[i] = pt3FilterApply(&rcSmoothingData.filterFeedforward[i], feedforwardRaw[i]);
 
                 if (FLIGHT_MODE(HORIZON_MODE)) {
-                    rcDeflectionSmoothed[i] = pt3FilterApply(&rcSmoothingData.filterRcDeflection[i], rcDeflection[i]);
+                    rcDeflection[i] = pt3FilterApply(&rcSmoothingData.filterRcDeflection[i], rcDeflection[i]);
                 }
             }
         }
@@ -435,8 +419,6 @@ if (isRxDataNew) {
         // --- copy raw values directly when smoothing is disabled ---
         for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
             setpointRate[axis] = rawSetpoint[axis];
-            feedforwardSmoothed[axis] = feedforwardRaw[axis];
-            rcDeflectionSmoothed[axis] = rcDeflection[axis];
         }
     }
 } // closes processRcSmoothingFilters

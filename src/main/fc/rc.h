@@ -44,7 +44,6 @@ typedef struct feedforwardData_s {
 void processRcCommand(void);
 float getSetpointRate(int axis);
 float getRcDeflection(int axis);
-float getRcDeflectionRaw(int axis);
 float getRcDeflectionAbs(int axis);
 float getMaxRcDeflectionAbs(void);
 void updateRcCommands(void);
