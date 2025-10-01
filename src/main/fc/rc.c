@@ -337,29 +337,19 @@ bool getRxRateValid(void)
     return isRxRateValid;
 }
 
-#ifdef USE_RC_SMOOTHING_FILTER
 
-// -----------------------------------------------------------------------------
-// Forward declarations
-// -----------------------------------------------------------------------------
 #ifdef USE_FEEDFORWARD
-static FAST_CODE_NOINLINE void updateFeedforwardFilters(const pidRuntime_t *pid);
-#endif
-
-static FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *smoothingData);
-
-// -----------------------------------------------------------------------------
-// Feedforward filter update
-// -----------------------------------------------------------------------------
-#ifdef USE_FEEDFORWARD
-static FAST_CODE_NOINLINE void updateFeedforwardFilters(const pidRuntime_t *pid)
+static FAST_CODE_NOINLINE void updateFeedforwardSmoothingCutoffs(const pidRuntime_t *pid)
 {
+    // update the cutoffs for thefeedforward step smoothing filter
+    // this should happen even if  rc smoothing is not or defined or enabled
+    
     float pt1K = pt1FilterGainFromDelay(pid->feedforwardSmoothFactor, 1.0f / smoothedRxRateHz);
 
     for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
         pt1FilterUpdateCutoff(&feedforwardData.filterSetpointSpeed[axis], pt1K);
         pt1FilterUpdateCutoff(&feedforwardData.filterSetpointDelta[axis], pt1K);
-    }
+    } 
 
     DEBUG_SET(DEBUG_FEEDFORWARD_LIMIT, 6, lrintf(pt1K * 1000.0f));
     DEBUG_SET(DEBUG_RC_SMOOTHING, 4, lrintf(pt1K * 1000.0f));
@@ -367,11 +357,16 @@ static FAST_CODE_NOINLINE void updateFeedforwardFilters(const pidRuntime_t *pid)
 }
 #endif // USE_FEEDFORWARD
 
-// -----------------------------------------------------------------------------
-// Calculate RC smoothing filter gain parameters
-// -----------------------------------------------------------------------------
+#ifdef USE_RC_SMOOTHING_FILTER
+
+
+static FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *smoothingData); // forward declaration
+
+
 static FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *smoothingData)
 {
+    // Calculate RC smoothing filter gain parameters on init and when rxrate changes significantly
+
     const bool autoRPYSmoothing      = (smoothingData->setpointCutoffSetting == 0);
     const bool autoThrottleSmoothing = (smoothingData->throttleCutoffSetting == 0);
     const float minCutoffHz          = 15.0f;
@@ -398,16 +393,14 @@ static FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *
         pt3FilterUpdateCutoff(&smoothingData->filterSetpoint[THROTTLE], pt3K_Thr);
     }
 
-    // --- Debug outputs ---
+    // --- Debugs
     DEBUG_SET(DEBUG_RC_SMOOTHING, 1, lrintf(smoothedRxRateHz));
     DEBUG_SET(DEBUG_RC_SMOOTHING, 2, smoothingData->setpointCutoffFrequency);
     DEBUG_SET(DEBUG_RC_SMOOTHING, 3, smoothingData->throttleCutoffFrequency);
 }
 
 
-/// -----------------------------------------------------------------------------
-// Main RC smoothing process
-// -----------------------------------------------------------------------------
+// --  filter the rc values  if rc smoothing is enabled
 static FAST_CODE void processRcSmoothingFilters(void)
 {
 
@@ -636,27 +629,32 @@ bool shouldUpdateSmoothing(void)
 
 FAST_CODE void processRcCommand(void)
 {
+	
+	//runs from core.c at task interval
+	
 	bool updateSmoothing = false;
     if (isRxDataNew) {
-        updateSmoothing = shouldUpdateSmoothing();
+        updateSmoothing = shouldUpdateSmoothing(); // true when detected rxRate changes significantly
+        
+        
+        
 
         if (updateSmoothing) {
-#ifdef USE_FEEDFORWARD
-            // update FF smoothing
-            updateFeedforwardFilters(&pidRuntime);
-#endif
-#ifdef USE_FEEDFORWARD
-            // update FF smoothing
-            updateFeedforwardFilters(&pidRuntime);
-#endif
+
 #ifdef USE_RC_SMOOTHING_FILTER
-        rcSmoothingSetFilterCutoffs(&rcSmoothingData);
+        rcSmoothingSetFilterCutoffs(&rcSmoothingData); // update rcSmoothing filter cutoffs
+                DEBUG_SET(DEBUG_RC_SMOOTHING_RATE, 0, currentRxIntervalUs / 10);
+        DEBUG_SET(DEBUG_RC_SMOOTHING_RATE, 3, updateSmoothing ? 1 : 0);
+
+#endif
+
+#ifdef USE_FEEDFORWARD
+            updateFeedforwardSmoothingCutoffs(&pidRuntime); // update rcSmoothing filter cutoffs
 #endif
 
         }
+
 #ifdef USE_RC_SMOOTHING_FILTER
-        DEBUG_SET(DEBUG_RC_SMOOTHING_RATE, 0, currentRxIntervalUs / 10);
-        DEBUG_SET(DEBUG_RC_SMOOTHING_RATE, 3, updateSmoothing ? 1 : 0);
 #endif
         maxRcDeflectionAbs = 0.0f;
 
@@ -916,12 +914,12 @@ void initRcProcessing(void)
     rcSmoothingData.throttleCutoffFrequency = rcSmoothingData.throttleCutoffSetting;
 
     if (rxConfig()->use_rc_smoothing ) {
-        rcSmoothingSetFilterCutoffs(&rcSmoothingData);
+        rcSmoothingSetFilterCutoffs(&rcSmoothingData); // initialise cutoffs
     }
 #endif
 
 #ifdef USE_FEEDFORWARD
-    updateFeedforwardFilters(&pidRuntime);
+    updateFeedforwardSmoothingCutoffs(&pidRuntime); // initialise the feedforward smoothing lowpass filter cutoffs
     feedforwardAveraging = pidRuntime.feedforwardAveraging;
     pt1FilterInit(&feedforwardYawHoldLpf, 0.0f);
 #endif // USE_FEEDFORWARD
