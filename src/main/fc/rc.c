@@ -343,6 +343,7 @@ static FAST_CODE_NOINLINE void updateFeedforwardSmoothingCutoffs(const pidRuntim
 {
     // update the cutoffs for thefeedforward step smoothing filter
     // this should happen even if  rc smoothing is not or defined or enabled
+    // runs on init and when called via processRcCommand() when rxRate changes significantly
     
     float pt1K = pt1FilterGainFromDelay(pid->feedforwardSmoothFactor, 1.0f / smoothedRxRateHz);
 
