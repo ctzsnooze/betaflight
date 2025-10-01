@@ -375,6 +375,9 @@ static FAST_CODE_NOINLINE void rcSmoothingSetFilterCutoffs(rcSmoothingFilter_t *
         for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
             pt3FilterUpdateCutoff(&smoothingData->filterRC[axis], pt3K_SP);
             pt3FilterUpdateCutoff(&smoothingData->filterFeedforward[axis], pt3K_SP);
+            pt3FilterUpdateCutoff(&smoothingData->filterRcDeflection[axis], pt3K_SP);
+            
+            
         }
     }
 
@@ -396,53 +399,43 @@ static FAST_CODE void processRcSmoothingFilters(void)
 {
     const bool useRcSmoothing = rxConfig()->use_rc_smoothing;
 
-    static FAST_DATA_ZERO_INIT float rxDataToSmooth[PRIMARY_CHANNEL_COUNT];
+    static FAST_DATA_ZERO_INIT float rcDataForDebug[PRIMARY_CHANNEL_COUNT];
 
-// --- when we get new RX data, store the original values in rxDataToSmooth[] ---
-if (isRxDataNew) {
-    for (int i = 0; i < PRIMARY_CHANNEL_COUNT; i++) {
-        rxDataToSmooth[i] = (i == THROTTLE) ? rcCommand[i] : rawSetpoint[i];
-
-        if (i < THROTTLE) {
-            DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rxDataToSmooth[i]));
-        } else {
-            DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rxDataToSmooth[i]) - 1000);
+    if (isRxDataNew) {
+        for (int i = 0; i < PRIMARY_CHANNEL_COUNT; i++) {
+            if (i < THROTTLE) {
+                DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rcDataForDebug[i]));
+            } else {
+                DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rcDataForDebug[i]) - 1000);
+            }
         }
-    }
-}
-
-    for (int i = FD_ROLL; i <= FD_YAW; i++) {
-    // write debugs
-        DEBUG_SET(DEBUG_RC_INTERPOLATION, i, lrintf(rxDataToSmooth[i]));
     }
 
     if (useRcSmoothing) {
-        for (int i = 0; i < PRIMARY_CHANNEL_COUNT; i++) {
-            float *dst = (i == THROTTLE) ? &rcCommand[i] : &setpointSmoothed[i];
+        // Throttle handled individually
+        rcCommand[THROTTLE] = pt3FilterApply(&rcSmoothingData.filterRC[THROTTLE], rcCommand[THROTTLE]);
 
-            *dst = pt3FilterApply(&rcSmoothingData.filterRC[i], rxDataToSmooth[i]);
+        // Roll, Pitch, Yaw
+        for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
+            setpointSmoothed[axis]     = pt3FilterApply(&rcSmoothingData.filterRC[axis], rawSetpoint[axis]);
+            feedforwardSmoothed[axis]  = pt3FilterApply(&rcSmoothingData.filterFeedforward[axis], feedforwardRaw[axis]);
 
-            if (i <= FD_YAW) { // For RPY axes
-                feedforwardSmoothed[i] = pt3FilterApply(&rcSmoothingData.filterFeedforward[i], feedforwardRaw[i]);
-
-                if (FLIGHT_MODE(HORIZON_MODE &&i < FD_YAW)) {
-                    rcDeflectionSmoothed[i] = pt3FilterApply(&rcSmoothingData.filterRcDeflection[i], rcDeflection[i]);
-                }
+            if (FLIGHT_MODE(HORIZON_MODE) && axis < FD_YAW) {
+                rcDeflectionSmoothed[axis] = pt3FilterApply(&rcSmoothingData.filterRcDeflection[axis], rcDeflection[axis]);
             }
         }
     } else {
-        // copy original values directly, when smoothing is disabled.
-        
+        // Copy original values directly
         for (int axis = FD_ROLL; axis <= FD_YAW; axis++) {
-            setpointSmoothed[axis] = rxDataToSmooth[axis];
-            
-            feedforwardSmoothed[axis] = feedforwardRaw[axis];
+            setpointSmoothed[axis]     = rawSetpoint[axis];
+            feedforwardSmoothed[axis]  = feedforwardRaw[axis];
             rcDeflectionSmoothed[axis] = rcDeflection[axis];
         }
     }
 } // end processRcSmoothingFilters
 
 #endif // USE_RC_SMOOTHING_FILTER
+
 
 #ifdef USE_FEEDFORWARD
 static FAST_CODE_NOINLINE void calculateFeedforward(const pidRuntime_t *pid, flight_dynamics_index_t axis)
