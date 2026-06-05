@@ -66,7 +66,7 @@
 // Accounts for vibration, bias drift, attitude errors.
 // Higher = less trust in accel dead-reckoning, more reliance on sensor corrections.
 #define Q_ACCEL_XY          50000.0f
-#define Q_ACCEL_Z           20000.0 // lower value favours faster acc changes, 700.0f is too low
+#define Q_ACCEL_Z           30000.0 // lower value favours faster acc changes, 1000.0f is too low
 
 // Initial covariance values
 #define INITIAL_POS_VAR     10000.0f    // cm^2  (1m uncertainty)
@@ -75,9 +75,8 @@
 // Measurement noise base values (R)
 #define R_GPS_POS_BASE      10000.0f    // cm^2 at pDOP=1.0
 #define R_GPS_VEL_BASE      2500.0f     // (cm/s)^2 at pDOP=1.0
-#define R_GPS_ALT_BASE      60000.0f    // cm^2 at pDOP=1.0, favour GPS signal strongly
-//#define R_BARO_ALT          2500.0f     // cm^2
-#define R_BARO_ALT          1500.0f   // cm^2 lower value favours rapid baro changes
+#define R_GPS_ALT_BASE      550.0f    // cm^2 at pDOP=1.5 typical, if trust baro 50, share equally, if DOP improves, favour GPS, if DOP is worse, favour Baro
+#define R_BARO_ALT          2500.0f   // cm^2 lower value favours rapid baro changes
 #define R_RANGEFINDER_ALT   100.0f      // cm^2
 #define R_OPTICALFLOW_VEL   400.0f      // (cm/s)^2 at max quality
 
