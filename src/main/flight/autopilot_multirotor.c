@@ -70,10 +70,10 @@
 #define POSHOLD_TASK_RATE_HZ 100
 #endif
 
-#define ALTITUDE_P_SCALE       0.04f     // (cm/s) / (cm) per altitudeP unit
-#define ALTITUDE_I_SCALE       0.0008f // scale on altitudeI for outer integral (cm/s bias / accumulated from pos err)
-#define ALTITUDE_D_SCALE       0.005f
-#define ALTITUDE_F_SCALE       0.005f
+#define ALTITUDE_P_SCALE       0.02f
+#define ALTITUDE_I_SCALE       0.002f
+#define ALTITUDE_D_SCALE       0.01f
+#define ALTITUDE_F_SCALE       0.01f
 #define ALTITUDE_VEL_CMD_MAX_DEFAULT_CM_S  1500.0f
 #define ALTITUDE_I_LIMIT      150.0f
 #define ALTITUDE_FF_KF_REF               (30.0f * ALTITUDE_F_SCALE) // "100%" feedforward when altitudeF CLI = 30
