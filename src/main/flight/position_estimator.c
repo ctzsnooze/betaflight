@@ -65,7 +65,7 @@
 // Accelerometer process noise in (cm/s^2)^2.
 // Accounts for vibration, bias drift, attitude errors.
 // Higher = less trust in accel dead-reckoning, more reliance on sensor corrections.
-#define Q_ACCEL_XY          50000.0f
+#define Q_ACCEL_XY          100000.0f // reduced to avoid integration reduced from 50000
 #define Q_ACCEL_Z           20000.0 // lower value favours faster acc changes, 700.0f is too low
 
 // Initial covariance values
@@ -73,8 +73,8 @@
 #define INITIAL_VEL_VAR     10000.0f    // (cm/s)^2
 
 // Measurement noise base values (R)
-#define R_GPS_POS_BASE      10000.0f    // cm^2 at pDOP=1.0
-#define R_GPS_VEL_BASE      2500.0f     // (cm/s)^2 at pDOP=1.0
+#define R_GPS_POS_BASE     500.0f    // cm^2 at pDOP=1.0 // ** increased from 10000 **
+#define R_GPS_VEL_BASE      500.0f     // (cm/s)^2 at pDOP=1.0 // ** increased from 2500 **
 #define R_GPS_ALT_BASE      60000.0f    // cm^2 at pDOP=1.0, favour GPS signal strongly
 //#define R_BARO_ALT          2500.0f     // cm^2
 #define R_BARO_ALT          1500.0f   // cm^2 lower value favours rapid baro changes
@@ -278,7 +278,7 @@ void positionEstimatorEnableXY(bool enable)
     xyEnabled = enable;
 }
 
-// Compute earth-frame linear acceleration from IMU (gravity removed), in cm/s^2 ENU
+    // Compute earth-frame linear acceleration from IMU (gravity removed), in cm/s^2
 static void getLinearAccelENU(float *accelEast, float *accelNorth, float *accelUp)
 {
     const float accScale = acc.dev.acc_1G_rec;
@@ -286,13 +286,13 @@ static void getLinearAccelENU(float *accelEast, float *accelNorth, float *accelU
                          acc.accADC.y * accScale,
                          acc.accADC.z * accScale }};
 
-    // rMat rotates body -> earth NED
+    // rMat rotates body -> earth NEU
     vector3_t accEF_NEU;
     matrixVectorMul(&accEF_NEU, &rMat, &accBF);
 
-    // NED -> ENU, subtract gravity (NED gravity = [0,0,+1g]), convert G -> cm/s^2
-    *accelEast  =  accEF_NEU.y * GRAVITY_CMSS;
-    *accelNorth =  accEF_NEU.x * GRAVITY_CMSS;
+    // subtract gravity (NEU gravity = [0,0,+1g]), convert G -> cm/s^2
+    *accelEast  =  accEF_NEU.y * GRAVITY_CMSS; // rMat Y is East
+    *accelNorth =  accEF_NEU.x * GRAVITY_CMSS; // rMat X is North
     *accelUp    = (accEF_NEU.z - 1.0f) * GRAVITY_CMSS;
 }
 
@@ -372,7 +372,7 @@ static void feedGPSMeasurements(timeUs_t nowUs)
         const uint16_t xyDop = gpsDopOrFallback(gpsSol.dop.hdop, gpsSol.dop.pdop);
         const float rPos = gpsR(R_GPS_POS_BASE, xyDop);
         kalmanUpdatePosition(&kfX, gpsDistCm.x, rPos);
-        kalmanUpdatePosition(&kfY, gpsDistCm.y, rPos);
+        kalmanUpdatePosition(&kfY, -gpsDistCm.y, rPos); // reverse sign for NorthSouth GPS Data
 
         // GPS velocity (NED from UBX) -> ENU
         const float rVel = gpsR(R_GPS_VEL_BASE, xyDop);

@@ -38,6 +38,11 @@ typedef struct positionEstimate3d_s {
     bool isValidZ;             // true if at least one Z measurement source active
 } positionEstimate3d_t;
 
+typedef enum {
+    EF_EAST = 0,
+    EF_NORTH
+} efAxis_e;
+
 void positionEstimatorInit(void);
 void positionEstimatorUpdate(void);
 
