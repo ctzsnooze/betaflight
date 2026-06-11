@@ -371,7 +371,7 @@ static void feedGPSMeasurements(timeUs_t nowUs)
 
         const uint16_t xyDop = gpsDopOrFallback(gpsSol.dop.hdop, gpsSol.dop.pdop);
         const float rPos = gpsR(R_GPS_POS_BASE, xyDop);
-        kalmanUpdatePosition(&kfX, gpsDistCm.x, rPos);
+        kalmanUpdatePosition(&kfX, - gpsDistCm.x, rPos); // reverse sign for EastWest GPS Data
         kalmanUpdatePosition(&kfY, -gpsDistCm.y, rPos); // reverse sign for NorthSouth GPS Data
 
         // GPS velocity (NED from UBX) -> ENU

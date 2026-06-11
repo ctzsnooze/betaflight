@@ -424,7 +424,7 @@ bool positionControl(void)
         vector2Rotate(&pidBodyFrame, &pidSumEF, angle);
         anglesBF.v[AI_ROLL]  = -pidBodyFrame.y; // negate: body Y is leftward, positive roll is rightward
         
-        anglesBF.v[AI_PITCH] = -pidBodyFrame.x; // negate: body X is forward, positive pitch is nose-up (rearward)
+        anglesBF.v[AI_PITCH] = pidBodyFrame.x; // body X is forward/backward, positive pitch is nose-down (forward)
         const float mag = vector2Norm(&anglesBF);
         if (mag > ap.maxAngle && mag > 0.0f) {
             vector2Scale(&anglesBF, &anglesBF, ap.maxAngle / mag);
