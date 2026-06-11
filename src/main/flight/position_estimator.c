@@ -73,8 +73,8 @@
 #define INITIAL_VEL_VAR     10000.0f    // (cm/s)^2
 
 // Measurement noise base values (R)
-#define R_GPS_POS_BASE     500.0f    // cm^2 at pDOP=1.0 // ** increased from 10000 **
-#define R_GPS_VEL_BASE      500.0f     // (cm/s)^2 at pDOP=1.0 // ** increased from 2500 **
+#define R_GPS_POS_BASE     1000.0f    // cm^2 at pDOP=1.0 // ** increased from 10000 **
+#define R_GPS_VEL_BASE      1000.0f     // (cm/s)^2 at pDOP=1.0 // ** increased from 2500 **
 #define R_GPS_ALT_BASE      60000.0f    // cm^2 at pDOP=1.0, favour GPS signal strongly
 //#define R_BARO_ALT          2500.0f     // cm^2
 #define R_BARO_ALT          1500.0f   // cm^2 lower value favours rapid baro changes
@@ -291,7 +291,7 @@ static void getLinearAccelENU(float *accelEast, float *accelNorth, float *accelU
     matrixVectorMul(&accEF_NEU, &rMat, &accBF);
 
     // subtract gravity (NEU gravity = [0,0,+1g]), convert G -> cm/s^2
-    *accelEast  =  accEF_NEU.y * GRAVITY_CMSS; // rMat Y is East
+    *accelEast  = -accEF_NEU.y * GRAVITY_CMSS; // rMat Y is West (NWD earth frame); East = -Y
     *accelNorth =  accEF_NEU.x * GRAVITY_CMSS; // rMat X is North
     *accelUp    = (accEF_NEU.z - 1.0f) * GRAVITY_CMSS;
 }
