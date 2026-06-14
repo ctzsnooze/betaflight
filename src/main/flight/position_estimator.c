@@ -65,7 +65,7 @@
 // Accelerometer process noise in (cm/s^2)^2.
 // Accounts for vibration, bias drift, attitude errors.
 // Higher = less trust in accel dead-reckoning, more reliance on sensor corrections.
-#define Q_ACCEL_XY          100000.0f // reduced to avoid integration reduced from 50000
+#define Q_ACCEL_XY          100000.0f // increased  from 50000 to avoid integration issues
 #define Q_ACCEL_Z           20000.0 // lower value favours faster acc changes, 700.0f is too low
 
 // Initial covariance values
@@ -73,8 +73,8 @@
 #define INITIAL_VEL_VAR     10000.0f    // (cm/s)^2
 
 // Measurement noise base values (R)
-#define R_GPS_POS_BASE     1000.0f    // cm^2 at pDOP=1.0 // ** increased from 10000 **
-#define R_GPS_VEL_BASE      1000.0f     // (cm/s)^2 at pDOP=1.0 // ** increased from 2500 **
+#define R_GPS_POS_BASE     1000.0f    // cm^2 at pDOP=1.0 // decreased from 10000
+#define R_GPS_VEL_BASE      1000.0f     // (cm/s)^2 at pDOP=1.0 // decreased from 2500
 #define R_GPS_ALT_BASE      60000.0f    // cm^2 at pDOP=1.0, favour GPS signal strongly
 //#define R_BARO_ALT          2500.0f     // cm^2
 #define R_BARO_ALT          1500.0f   // cm^2 lower value favours rapid baro changes
