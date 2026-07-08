@@ -66,7 +66,7 @@ static uint8_t gpsRescueConfig_allowArmingWithoutFix;
 
 static uint8_t autopilotConfig_altitudeP, autopilotConfig_altitudeI, autopilotConfig_altitudeD, autopilotConfig_altitudeF;
 static uint8_t gpsRescueConfig_yawP;
-static uint8_t autopilotConfig_positionP, autopilotConfig_positionI, autopilotConfig_positionD;
+static uint8_t autopilotConfig_positionP, autopilotConfig_positionI, autopilotConfig_positionD, autopilotConfig_positionA, autopilotConfig_positionF;
 static uint8_t autopilotConfig_positionCutoff;
 
 static const void *cms_menuGpsRescuePidOnEnter(displayPort_t *pDisp)
@@ -83,6 +83,8 @@ static const void *cms_menuGpsRescuePidOnEnter(displayPort_t *pDisp)
     autopilotConfig_positionP = autopilotConfig()->positionP;
     autopilotConfig_positionI = autopilotConfig()->positionI;
     autopilotConfig_positionD = autopilotConfig()->positionD;
+    autopilotConfig_positionA = autopilotConfig()->positionA;
+    autopilotConfig_positionF = autopilotConfig()->positionF;
 
     autopilotConfig_positionCutoff = autopilotConfig()->positionCutoff;
 
@@ -104,6 +106,8 @@ static const void *cms_menuGpsRescuePidOnExit(displayPort_t *pDisp, const OSD_En
     autopilotConfigMutable()->positionP = autopilotConfig_positionP;
     autopilotConfigMutable()->positionI = autopilotConfig_positionI;
     autopilotConfigMutable()->positionD = autopilotConfig_positionD;
+    autopilotConfigMutable()->positionA = autopilotConfig_positionA;
+    autopilotConfigMutable()->positionF = autopilotConfig_positionF;
 
     autopilotConfigMutable()->positionCutoff = autopilotConfig_positionCutoff;
 
@@ -124,6 +128,8 @@ const OSD_Entry cms_menuGpsRescuePidEntries[] =
     { "POSITION P",        OME_UINT8 | REBOOT_REQUIRED, NULL, &(OSD_UINT8_t){ &autopilotConfig_positionP, 0, 200, 1 } },
     { "POSITION I",        OME_UINT8 | REBOOT_REQUIRED, NULL, &(OSD_UINT8_t){ &autopilotConfig_positionI, 0, 200, 1 } },
     { "POSITION D",        OME_UINT8 | REBOOT_REQUIRED, NULL, &(OSD_UINT8_t){ &autopilotConfig_positionD, 0, 200, 1 } },
+    { "POSITION A",        OME_UINT8 | REBOOT_REQUIRED, NULL, &(OSD_UINT8_t){ &autopilotConfig_positionA, 0, 200, 1 } },
+    { "POSITION F",        OME_UINT8 | REBOOT_REQUIRED, NULL, &(OSD_UINT8_t){ &autopilotConfig_positionF, 0, 200, 1 } },
 
     { "SMOOTHING",         OME_UINT8 | REBOOT_REQUIRED, NULL, &(OSD_UINT8_t){ &autopilotConfig_positionCutoff, 10, 255, 1 } },
 

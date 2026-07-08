@@ -149,6 +149,7 @@ static void initAndSettleAt(float eastCm, float northCm, int16_t yawDecidegrees)
     cfg->positionI  = 30;
     cfg->positionD  = 30;
     cfg->positionA  = 30;
+    cfg->positionF  = 30;
     cfg->maxAngle   = 30;
     cfg->hoverThrottle = 1500;
     cfg->throttleMin   = 1000;
