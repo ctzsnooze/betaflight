@@ -158,6 +158,7 @@ static void initAndSettleAt(float eastCm, float northCm, int16_t yawDecidegrees)
     cfg->altitudeI = 50;
     cfg->altitudeD = 50;
     cfg->altitudeF = 0;
+    cfg->positionCutoff = 50;
     cfg->landingAltitudeM = 5;
 
     autopilotInit();
@@ -211,19 +212,93 @@ TEST_F(PosHoldTest, FlyawayDetectionTriggersAtLargeDistance)
     EXPECT_FALSE(positionControl()); 
 }
 
-// -- Displacement response: heading North (yaw = 0) --
+// -- Displacement response: craft heading North (yaw = 0) --
 
 TEST_F(PosHoldTest, EastDisplacementProducesNegativeRollResponse)
 {
     initAndSettleAt(0, 0, 0);
 
-    // Drifting East requires a leftward correction (Negative Roll)
+    // East displacement should cause a leftward correction (Negative Roll)
     testEstimate.position.x = 100.0f;
-    runIterations(SETTLE_ITERATIONS);
-
+    runIterations(1);
     EXPECT_LT(autopilotAngle[AI_ROLL], 0.0f); // Verifies output is  negative (Roll Left)
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],-4.5f, 0.01f); // immediate P response on first loop
+    EXPECT_NEAR(autopilotAngle[AI_PITCH], 0.0f, 0.5f);
+
+    runIterations(5);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],-4.53f, 0.01f); // slow iTerm accumulation (not from filters)
+    EXPECT_NEAR(autopilotAngle[AI_PITCH], 0.0f, 0.5f);
+
+
+    runIterations(SETTLE_ITERATIONS);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],-5.4f, 0.1f); // iTerm adds more of the same angle over time
     EXPECT_NEAR(autopilotAngle[AI_PITCH], 0.0f, 0.5f);
 }
+
+TEST_F(PosHoldTest, StickMovementRightRollsRight)
+{
+    initAndSettleAt(0, 0, 0);
+
+    setSticksActiveStatus(true); // set sticks active
+    simulatedStickRoll = 100.0f;
+    //  leads to immediate positive roll from F of 5.100, and incremental P gain from target position movement
+
+    runIterations(1);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],5.14f, 0.01f); // F of 5.100 plus P
+
+    runIterations(1);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],5.19f, 0.01f); //  F of 5.1 plus P 0.05 deg per loop roughly
+
+    runIterations(1);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],5.23f, 0.01f);
+
+    runIterations(100);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],9.73f, 0.1f); //F plus P from target movement over 1s
+
+
+        // ** center the sticks should clear P and F
+     setSticksActiveStatus(false); 
+        simulatedStickRoll = 0.0f; // set sticksActive and no roll
+    runIterations(1);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],0.0f, 0.01f); // no P or F
+    runIterations(50);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],0.0f, 0.01f);
+}
+
+
+
+
+TEST_F(PosHoldTest, iTermAccumulatesAndRelaxes)
+{
+    initAndSettleAt(0, 0, 0);
+
+    // East displacement should cause a leftward correction (Negative Roll)
+    testEstimate.position.x = 100.0f;
+     setSticksActiveStatus(false);
+    simulatedStickRoll = 0.0f; 
+    runIterations(1);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],-4.5f, 0.1f); // immediate P response on first loop
+    EXPECT_NEAR(autopilotAngle[AI_PITCH], 0.0f, 0.5f);
+
+    runIterations(100);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],-4.95f, 0.1f); // add 100 loops of iTerm accumulation 
+
+    runIterations(SETTLE_ITERATIONS);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],-5.85f, 0.1f); // iTerm adds more of the same angle over time
+
+    testEstimate.position.x = 0.0f; // reset position to clear P
+    runIterations(1);
+        EXPECT_NEAR(autopilotAngle[AI_ROLL],-1.35, 0.1f); // P is zero, remainder is iTerm
+
+  // test for iTermRelax while sticksActive with no deflection on roll
+     setSticksActiveStatus(true);
+    simulatedStickRoll = 0.0f; 
+    simulatedStickPitch = 0.5f;
+
+    runIterations(100);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],-1.35f, 0.1f); // nothing added to iTerm while sticks are deflected
+}
+
 TEST_F(PosHoldTest, WestDisplacementProducesPositiveRollResponse)
 {
     initAndSettleAt(0, 0, 0);
@@ -260,28 +335,26 @@ TEST_F(PosHoldTest, SouthDisplacementProducesPositivePitchResponse)
     EXPECT_GT(autopilotAngle[AI_PITCH], 0.0f); // Must be positive (Pitch Forward)
 }
 
-// -- Velocity damping (P term) --
 
-TEST_F(PosHoldTest, EastwardVelocityProducesOpposingRoll)
+TEST_F(PosHoldTest, EastwardVelocityProducesNegativeRoll)
 {
     initAndSettleAt(0, 0, 0);
 
-    testEstimate.velocity.x = 50.0f;
+    testEstimate.velocity.x = 100.0f;
     runIterations(SETTLE_ITERATIONS);
+    // drifting East requires a leftward braking lean (Negative Roll)
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],-6.6f, 0.1f);
+    EXPECT_NEAR(autopilotAngle[AI_PITCH], 0.0f, 0.1f); // Pitch must be flat
 
-    EXPECT_NE(autopilotAngle[AI_ROLL], 0.0f);
 }
 
-TEST_F(PosHoldTest, EastVelocityProducesNegativeRollResponse)
+TEST_F(PosHoldTest, EastVelocityProducesMoreNegativeRollResponse)
 {
     initAndSettleAt(0, 0, 0);
 
-    // drifting East requires a leftward braking lean (Negative Roll)
-    testEstimate.velocity.x = 50.0f;
+    testEstimate.velocity.x = 200.0f;
     runIterations(SETTLE_ITERATIONS);
-
-    EXPECT_LT(autopilotAngle[AI_ROLL], 0.0f); // Roll must be NEGATIVE (Roll Left)
-    EXPECT_NEAR(autopilotAngle[AI_PITCH], 0.0f, 0.1f); // Pitch must be flat
+    EXPECT_NEAR(autopilotAngle[AI_ROLL],-14.4f, 0.1f);
 }
 
 TEST_F(PosHoldTest, WestVelocityProducesBrakingRollResponse)
@@ -338,23 +411,20 @@ TEST_F(PosHoldTest, HeadingSouthReversesRollSign)
 
 
 
-// -- Sticks active reduces the response --
 
-TEST_F(PosHoldTest, SticksActiveButCentered)
+TEST_F(PosHoldTest, iTermWindup)
 {
     initAndSettleAt(0, 0, 0);
     testEstimate.position.x = 100.0f; // Drone is offset to the right
     runIterations(SETTLE_ITERATIONS);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL], -5.4f, 0.01f); // left roll from P
 
-    // Ensure sticks are simulated as perfectly centered
-    simulatedStickRoll = 0.0f;
-    simulatedStickPitch = 0.0f;
+    runIterations(SETTLE_ITERATIONS); // accumulate iTerm over 2s
+    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.3f, 0.01f);
+    EXPECT_NEAR(autopilotAngle[AI_PITCH], 0.0f, 0.01f);
 
-    setSticksActiveStatus(true);
-    runIterations(SETTLE_ITERATIONS);
-
-    // Assert your new baseline calculation output
-    EXPECT_NEAR(autopilotAngle[AI_ROLL], -0.9045f, 0.01f);
+    runIterations(SETTLE_ITERATIONS); // let iTerm wind up more
+    EXPECT_NEAR(autopilotAngle[AI_ROLL], -7.2f, 0.1f);
     EXPECT_NEAR(autopilotAngle[AI_PITCH], 0.0f, 0.01f);
 }
 
@@ -391,35 +461,49 @@ TEST_F(PosHoldTest, VelocityTransitionSimulatesFallbackAndRecovery)
 
     testEstimate.velocity.x = 0.0f;
     runIterations(SETTLE_ITERATIONS);
-    EXPECT_NEAR(-0.7f, autopilotAngle[AI_ROLL], 0.1f);
+    EXPECT_NEAR(-0.0f, autopilotAngle[AI_ROLL], 0.1f);
 }
 
 TEST_F(PosHoldTest, ReleasingSticksBrakes)
 {
     initAndSettleAt(0, 0, 0);
 
-    // Pilot is moving with sticks active
-    setSticksActiveStatus(true);
-    testEstimate.velocity.x = 120.0f;
-
-    // Ensure sticks are centered for this baseline cruise test
-    simulatedStickRoll = 0.0f;
-
+    testEstimate.velocity.x = 100.0f;
     runIterations(SETTLE_ITERATIONS);
 
-    // UPDATE: Changed from -3.73f to -9.3767f to match the active tracking math
-    EXPECT_NEAR(autopilotAngle[AI_ROLL], -9.3767f, 0.05f);
-    EXPECT_NEAR(autopilotAngle[AI_PITCH],  0.0f,        0.01f);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.6f, 0.1f);
+  runIterations(SETTLE_ITERATIONS);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.6f, 0.1f);
+      runIterations(SETTLE_ITERATIONS);
+
+        // stick deflection should cause    
+          setSticksActiveStatus(true);
+        simulatedStickRoll = 0.5f;
+    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.6f, 0.1f);
+
+  runIterations(SETTLE_ITERATIONS);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.6f, 0.1f);
+    
+      runIterations(SETTLE_ITERATIONS);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.47f, 0.1f);
+
+
+
+  runIterations(SETTLE_ITERATIONS);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.42f, 0.1f);
+    
+      runIterations(SETTLE_ITERATIONS);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.37f, 0.1f);
 
     // Stick release should cause a greater angle
+
+    simulatedStickRoll = 0.0f;
+    simulatedStickPitch = 0.0f;
     setSticksActiveStatus(false);
-    runIterations(SETTLE_ITERATIONS);
-
-    float expectedBrakeAngle = -14.4f;
-    EXPECT_NEAR(autopilotAngle[AI_ROLL], expectedBrakeAngle, 0.1f);
 
     runIterations(SETTLE_ITERATIONS);
-    EXPECT_NEAR(autopilotAngle[AI_PITCH], 0.0f, 0.1f);
+    EXPECT_NEAR(autopilotAngle[AI_ROLL], 2.4, 0.1f);
+
 }
 
 // -- GPS-like scenario: large displacement, position + velocity --

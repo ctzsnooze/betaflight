@@ -381,7 +381,7 @@ void sticksMoveTarget(void)
     targetPosition.v[EF_NORTH] += targetVelocity.v[EF_NORTH] * dt;
     targetPosition.v[EF_EAST]  += targetVelocity.v[EF_EAST] * dt;
 
-    posHoldStartPosition = targetPosition;
+    posHoldStartPosition = targetPosition; // reset sanity check distances
 }
 
 bool positionControl(void)
@@ -450,7 +450,7 @@ bool positionControl(void)
                 ap.sanityCheckDistance = calculateSanityCheckDistance(ap.speedXY); // update sanity check distance
                 ap.isPosHoldBraking = false; // prevent stopping behaviours
             }
-            sticksMoveTarget(); // while sticks are moving, adjust target position and velocity values
+            sticksMoveTarget(); // while sticks are active, adjust target position and velocity values
         } else {
             // Sticks have just been released and returned to center
             if (ap.wasSticksActive) {
@@ -460,7 +460,7 @@ bool positionControl(void)
             // sticks centered, craft is actively braking: monitor for a stop or stall
             if (ap.isPosHoldBraking) {
                 float inflectionProduct = currentDeltaXY * ap.prevDeltaSpeedXY;
-                bool stoppingXY = (currentDeltaXY < 0.0f && ap.speedXY < POSHOLD_HAS_STOPPED_CMS);
+                bool stoppingXY = (currentDeltaXY <= 0.0f && ap.speedXY < POSHOLD_HAS_STOPPED_CMS);
                 bool stalledXY = (ap.speedXY < POSHOLD_STALL_CHECK_SPEED_CMS && inflectionProduct < 0.0f);
                 if (stoppingXY || stalledXY) {
                 initPositionHold(); // init target position and new sanity check distance
@@ -491,9 +491,8 @@ bool positionControl(void)
             if (ap.isPosHoldBraking) {
                 targetPosition.v[axis] += velocity.v[axis] * dt; // move target while slowing down until stopped, to prevent large P drop to zero on stopping
             }
-            // Normal distance error calculation for position hold
-            distanceError.v[axis] = targetPosition.v[axis] - currentPosition.v[axis];
             const float velocityFiltered = pt2FilterApply(&posDtermLpf[axis], velocity.v[axis]);
+
             velocityError.v[axis] = targetVelocity.v[axis] - velocityFiltered;
             const float accelerationRaw = (velocityFiltered - previousVelocity.v[axis]) * POSHOLD_TASK_RATE_HZ;
             previousVelocity.v[axis] = velocityFiltered;
@@ -501,13 +500,16 @@ bool positionControl(void)
 
             if (ap.navActive) {
                 distanceError.v[axis] += velocityError.v[axis] * dt; // distance error from integral of velocity error
-            } else if (ap.sticksActive) {
-                // in position hold, decay the accumulatediTerm, slowly, while sticks are deflected
-                distanceErrorIntegral.v[axis] *= 0.995f; // about 2s time constant towards zero
+                distanceErrorIntegral.v[axis] = 0.0f; // no iTerm in nav mode
+                } else {
+                // distance error from target position
+                distanceError.v[axis] = targetPosition.v[axis] - currentPosition.v[axis];
+                const bool dontAddITerm = ap.isPosHoldBraking || ap.sticksActive;
+               distanceErrorIntegral.v[axis] += distanceError.v[axis] * dt * (dontAddITerm ? 0.0f : 1.0f);
             }
-
+            // common code for nav and poshold...
             distanceError.v[axis] = constrainf(distanceError.v[axis], -ERROR_DISTANCE_LIMIT, ERROR_DISTANCE_LIMIT);
-            distanceErrorIntegral.v[axis] += distanceError.v[axis] * dt * (ap.isPosHoldBraking ? 0.0f : 1.0f);
+
             distanceErrorIntegral.v[axis] = constrainf(distanceErrorIntegral.v[axis], -POSITION_I_LIMIT, POSITION_I_LIMIT);
 
             pidP.v[axis] = distanceError.v[axis] * positionPidCoeffs.Kp;
