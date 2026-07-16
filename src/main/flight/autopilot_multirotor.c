@@ -450,15 +450,19 @@ bool positionControl(void)
                 ap.sanityCheckDistance = calculateSanityCheckDistance(ap.speedXY); // update sanity check distance
                 ap.isPosHoldBraking = false; // prevent stopping behaviours
             }
-            sticksMoveTarget(); // while sticks are active, adjust target position and velocity values
+            sticksMoveTarget(); // while sticks are active, adjust target position and target velocity values
         } else {
-            // Sticks have just been released and returned to center
+            // Sticks not active - target velocity should be forced to zero in basic position hold
+            targetVelocity.v[EF_EAST]  = 0.0f;
+            targetVelocity.v[EF_NORTH] = 0.0f;
+
             if (ap.wasSticksActive) {
-                updatePositionHoldTarget(); // Reset position hold target without clearing velocity data
-                ap.isPosHoldBraking = true; // Explicitly turn on braking mode to begin deceleration phase
+                // sticks just centered
+                updatePositionHoldTarget(); // Reset position hold target position
+                ap.isPosHoldBraking = true; // Enable braking mode to begin deceleration phase
             }
-            // sticks centered, craft is actively braking: monitor for a stop or stall
             if (ap.isPosHoldBraking) {
+                // monitor for a stop or stall
                 float inflectionProduct = currentDeltaXY * ap.prevDeltaSpeedXY;
                 bool stoppingXY = (currentDeltaXY <= 0.0f && ap.speedXY < POSHOLD_HAS_STOPPED_CMS);
                 bool stalledXY = (ap.speedXY < POSHOLD_STALL_CHECK_SPEED_CMS && inflectionProduct < 0.0f);
@@ -547,7 +551,7 @@ bool positionControl(void)
     if (isPositionHeld)     statusValue += 3; // plus 1, ie 4,  if stopping
     if (ap.sticksActive)    statusValue += 5;
     
-    DEBUG_SET(DEBUG_AUTOPILOT_PID, 0, lrintf(velocity.v[ap.debugAxis])); // velocity error
+    DEBUG_SET(DEBUG_AUTOPILOT_PID, 0, lrintf(velocity.v[ap.debugAxis])); // velocity
     DEBUG_SET(DEBUG_AUTOPILOT_PID, 1, lrintf(distanceError.v[ap.debugAxis])); // distance error
     DEBUG_SET(DEBUG_AUTOPILOT_PID, 2, lrintf(pidP.v[ap.debugAxis] * 10));   
     DEBUG_SET(DEBUG_AUTOPILOT_PID, 3, lrintf(pidI.v[ap.debugAxis] * 10));
