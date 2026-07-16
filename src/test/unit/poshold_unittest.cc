@@ -468,42 +468,24 @@ TEST_F(PosHoldTest, ReleasingSticksBrakes)
 {
     initAndSettleAt(0, 0, 0);
 
-    testEstimate.velocity.x = 100.0f;
-    runIterations(SETTLE_ITERATIONS);
+    setSticksActiveStatus(true); // simulate sticks rolled right about 25%
+    simulatedStickRoll = 100.0f; // setpoint of 100 is about 25% stick deflection with normal rates
+        runIterations(10);
+        EXPECT_NEAR(autopilotAngle[AI_ROLL],5.55f, 0.1f); //5.1 from stick F, rest from P from target movement
 
-    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.6f, 0.1f);
-  runIterations(SETTLE_ITERATIONS);
-    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.6f, 0.1f);
-      runIterations(SETTLE_ITERATIONS);
+        runIterations(10);
+        EXPECT_NEAR(autopilotAngle[AI_ROLL],6.0f, 0.1f); // more P from target having moved further out
 
-        // stick deflection should cause    
-          setSticksActiveStatus(true);
-        simulatedStickRoll = 0.5f;
-    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.6f, 0.1f);
-
-  runIterations(SETTLE_ITERATIONS);
-    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.6f, 0.1f);
-    
-      runIterations(SETTLE_ITERATIONS);
-    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.47f, 0.1f);
-
-
-
-  runIterations(SETTLE_ITERATIONS);
-    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.42f, 0.1f);
-    
-      runIterations(SETTLE_ITERATIONS);
-    EXPECT_NEAR(autopilotAngle[AI_ROLL], -6.37f, 0.1f);
-
-    // Stick release should cause a greater angle
-
+    setSticksActiveStatus(false); // now return sticks to centre
     simulatedStickRoll = 0.0f;
-    simulatedStickPitch = 0.0f;
-    setSticksActiveStatus(false);
+        runIterations(1);
+        EXPECT_NEAR(autopilotAngle[AI_ROLL],0.0f, 0.1f); // target position is reset, FF is zero, (no iTerm accumulated previously, either)
 
-    runIterations(SETTLE_ITERATIONS);
-    EXPECT_NEAR(autopilotAngle[AI_ROLL], 2.4, 0.1f);
-
+// assume craft is now drifting right and offset right
+    testEstimate.position.x = 50.0f;
+    testEstimate.velocity.x = 50.0f;
+        runIterations(10);
+        EXPECT_NEAR(autopilotAngle[AI_ROLL],-10.5f, 0.1f); // craft should correct by rolling left
 }
 
 // -- GPS-like scenario: large displacement, position + velocity --
