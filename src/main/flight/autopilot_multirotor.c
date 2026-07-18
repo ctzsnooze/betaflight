@@ -680,10 +680,10 @@ bool positionControl(void)
             targetPosition.v[axis] += velocity.v[axis] * dt;
             shouldIntegrateDistanceError = false;
         } else {
-                distanceError.v[axis] = targetPosition.v[axis] - currentPosition.v[axis];
-                shouldIntegrateDistanceError = !ap.sticksActive;
+            // not in a special mode
+            distanceError.v[axis] = targetPosition.v[axis] - currentPosition.v[axis]; //normal distanceError calculation from currentPosition
+            shouldIntegrateDistanceError = !ap.sticksActive; // don't add to distance integral while sticks are active
             }
-
         // these things happen in all positionControl modes
         distanceError.v[axis] = constrainf(distanceError.v[axis], -ERROR_DISTANCE_LIMIT, ERROR_DISTANCE_LIMIT);
         if (shouldIntegrateDistanceError) {
