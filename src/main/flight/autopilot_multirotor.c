@@ -678,9 +678,11 @@ bool positionControl(void)
             kF = 0.0f; // no drive from velocity target while braking :comment may not be needed as target velocity must be zero while braking
             // Move the target with the craft while slowing, so P doesn'tsnap from a large value to zero the instant the craft stops.
             targetPosition.v[axis] += velocity.v[axis] * dt;
-            distanceError.v[axis] = targetPosition.v[axis] - currentPosition.v[axis];
             shouldIntegrateDistanceError = false;
-        }
+        } else {
+                distanceError.v[axis] = targetPosition.v[axis] - currentPosition.v[axis];
+                shouldIntegrateDistanceError = !ap.sticksActive;
+            }
 
         // these things happen in all positionControl modes
         distanceError.v[axis] = constrainf(distanceError.v[axis], -ERROR_DISTANCE_LIMIT, ERROR_DISTANCE_LIMIT);
