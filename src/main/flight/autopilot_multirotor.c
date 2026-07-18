@@ -743,7 +743,7 @@ bool positionControl(void)
     if (abortNavRequested)  statusValue += 100;
     if (isPositionHeld)     statusValue += 3; // plus 1, ie 4,  if stopping
     if (ap.sticksActive)    statusValue += 5;
-    DEBUG_SET(DEBUG_AUTOPILOT_PID, 0, lrintf(velocityError.v[ap.debugAxis])); // velocity error
+    DEBUG_SET(DEBUG_AUTOPILOT_PID, 0, lrintf(velocity.v[ap.debugAxis])); // velocity error
     DEBUG_SET(DEBUG_AUTOPILOT_PID, 1, lrintf(distanceError.v[ap.debugAxis])); // distance error
     DEBUG_SET(DEBUG_AUTOPILOT_PID, 2, lrintf(pidP.v[ap.debugAxis] * 10));   
     DEBUG_SET(DEBUG_AUTOPILOT_PID, 3, lrintf(pidI.v[ap.debugAxis] * 10));
