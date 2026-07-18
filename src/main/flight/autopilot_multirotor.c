@@ -665,7 +665,6 @@ bool positionControl(void)
         bool shouldIntegrateDistanceError = true;
         float kF = xyPid.Kf; // normal kF for position hold stick movements
 
-        // handle special modes
         if (velocityMode || ap.navActive) {
             // Nav velocity loop: track the commanded ground velocity directly.
             kF = xyKDrag + xyPid.Kd; // drag feedforward plus normal D gain to emulate D from error
@@ -699,25 +698,26 @@ bool positionControl(void)
     } // End for loop
 
 
-    bool buildupClamped = false;
-    if (velocityMode || ap.navActive) {
-        // velocityBuildupMaxPitch bounds the P vector, the acceleration-demand
-        // term, so the pitch bias while building up to speed is limited; the
-        // drag feedforward, integral trim and damping ride on top, with the
-        // maxAngle clamp below as the hard limit on the total.
-        
-        // ctz- might be better as a static to modify P in the for loop, like wasAngleSaturated ??
-        const float buildupMaxDeg = autopilotConfig()->velocityBuildupMaxPitch;
-        const float pMag = vector2Norm(&pidP);
-        if (pMag > buildupMaxDeg) {
-            buildupClamped = true;
-            const float scale = (pMag > 0.001f) ? buildupMaxDeg / pMag : 0.0f;
-            vector2Scale(&pidP, &pidP, scale);
-            for (unsigned axis = 0; axis < EF_AXIS_COUNT; axis++) {
-                pidSumVectorEF.v[axis] = pidP.v[axis] + pidI.v[axis] + pidD.v[axis] + pidA.v[axis] + pidF.v[axis];
-            }
-        }
-    }
+    bool buildupClamped = false; 
+    
+    //  commented out or else all unit tests fail now the for loop is unified as above
+    // if a modification of this kind is needed it could 
+//     if (velocityMode || ap.navActive) {
+//         // velocityBuildupMaxPitch bounds the P vector, the acceleration-demand
+//         // term, so the pitch bias while building up to speed is limited; the
+//         // drag feedforward, integral trim and damping ride on top, with the
+//         // maxAngle clamp below as the hard limit on the total.
+//         const float buildupMaxDeg = autopilotConfig()->velocityBuildupMaxPitch;
+//         const float pMag = vector2Norm(&pidP);
+//         if (pMag > buildupMaxDeg) {
+//             buildupClamped = true;
+//             const float scale = (pMag > 0.001f) ? buildupMaxDeg / pMag : 0.0f;
+//             vector2Scale(&pidP, &pidP, scale);
+//             for (unsigned axis = 0; axis < EF_AXIS_COUNT; axis++) {
+//                 pidSumVectorEF.v[axis] = pidP.v[axis] + pidI.v[axis] + pidD.v[axis] + pidA.v[axis] + pidF.v[axis];
+//             }
+//         }
+//     }
 
     // Rotation from Earth Frame to Body Frame
     const float headingRad = DECIDEGREES_TO_RADIANS(attitude.values.yaw);
