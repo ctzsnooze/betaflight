@@ -665,6 +665,7 @@ bool positionControl(void)
         bool shouldIntegrateDistanceError = true;
         float kF = xyPid.Kf; // normal kF for position hold stick movements
 
+        // handle special modes
         if (velocityMode || ap.navActive) {
             // Nav velocity loop: track the commanded ground velocity directly.
             kF = xyKDrag + xyPid.Kd; // drag feedforward plus normal D gain to emulate D from error
@@ -679,23 +680,24 @@ bool positionControl(void)
             // Move the target with the craft while slowing, so P doesn'tsnap from a large value to zero the instant the craft stops.
             targetPosition.v[axis] += velocity.v[axis] * dt;
             distanceError.v[axis] = targetPosition.v[axis] - currentPosition.v[axis];
-                shouldIntegrateDistanceError = false;
-        } else {
-            // these things happen in all positionControl modes
-            distanceError.v[axis] = constrainf(distanceError.v[axis], -ERROR_DISTANCE_LIMIT, ERROR_DISTANCE_LIMIT);
-            if (shouldIntegrateDistanceError) {
+            shouldIntegrateDistanceError = false;
+        }
+
+        // these things happen in all positionControl modes
+        distanceError.v[axis] = constrainf(distanceError.v[axis], -ERROR_DISTANCE_LIMIT, ERROR_DISTANCE_LIMIT);
+        if (shouldIntegrateDistanceError) {
             distanceErrorIntegral.v[axis] += distanceError.v[axis] * dt;
             distanceErrorIntegral.v[axis] = constrainf(distanceErrorIntegral.v[axis], -POSITION_I_LIMIT, POSITION_I_LIMIT);
-            }
-            pidP.v[axis] = distanceError.v[axis] * xyPid.Kp; // P factor from distance error, real or virtual
-            pidI.v[axis] = distanceErrorIntegral.v[axis] * xyPid.Ki; // integral of distance error, forced to zero when there is no hard position source
-            pidD.v[axis] = -velocityFiltered * xyPid.Kd * dTermEFBoost; // damping on measured velocity
-            pidA.v[axis] = acceleration * xyPid.Ka;
-            pidF.v[axis] = targetVelocity.v[axis] * kF; // velocity feedforward
         }
+        pidP.v[axis] = distanceError.v[axis] * xyPid.Kp; // P factor from distance error, real or virtual
+        pidI.v[axis] = distanceErrorIntegral.v[axis] * xyPid.Ki; // integral of distance error, forced to zero when there is no hard position source
+        pidD.v[axis] = -velocityFiltered * xyPid.Kd * dTermEFBoost; // damping on measured velocity
+        pidA.v[axis] = acceleration * xyPid.Ka;
+        pidF.v[axis] = targetVelocity.v[axis] * kF; // velocity feedforward
 
         pidSumVectorEF.v[axis] = pidP.v[axis] + pidI.v[axis] + pidD.v[axis] + pidA.v[axis] + pidF.v[axis];
     } // End for loop
+
 
     bool buildupClamped = false;
     if (velocityMode || ap.navActive) {
