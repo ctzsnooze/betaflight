@@ -655,6 +655,7 @@ bool positionControl(void)
     vector2_t velocityFilteredV = { { 0 } };
 
     for (unsigned axis = 0; axis < EF_AXIS_COUNT; axis++) {
+        const float dTermEFBoost = 1.0f + fabsf(velocity.v[axis]) * 0.001f; // non-linear velocity gain, essentially for more aggressive stopping when entering a stop at high speed
         const float velocityFiltered = pt2FilterApply(&posDtermLpf[axis], velocity.v[axis]);
         velocityFilteredV.v[axis] = velocityFiltered;
         velocityError.v[axis] = targetVelocity.v[axis] - velocityFiltered;
@@ -688,7 +689,7 @@ bool positionControl(void)
             }
             pidP.v[axis] = distanceError.v[axis] * xyPid.Kp; // P factor from distance error, real or virtual
             pidI.v[axis] = distanceErrorIntegral.v[axis] * xyPid.Ki; // integral of distance error, forced to zero when there is no hard position source
-            pidD.v[axis] = -velocityFiltered * xyPid.Kd; // damping on measured velocity
+            pidD.v[axis] = -velocityFiltered * xyPid.Kd * dTermEFBoost; // damping on measured velocity
             pidA.v[axis] = acceleration * xyPid.Ka;
             pidF.v[axis] = targetVelocity.v[axis] * kF; // velocity feedforward
         }
