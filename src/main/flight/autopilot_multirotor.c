@@ -699,27 +699,23 @@ bool positionControl(void)
         pidSumVectorEF.v[axis] = pidP.v[axis] + pidI.v[axis] + pidD.v[axis] + pidA.v[axis] + pidF.v[axis];
     } // End for loop
 
-
+    // comment from ctz : perhaps this can be re-worked to apply inside the current for loop like wasAngleSaturated ??
     bool buildupClamped = false; 
-    
-    //  commented out or else all unit tests fail now the for loop is unified as above
-    // if a modification of this kind is needed it could 
-//     if (velocityMode || ap.navActive) {
-//         // velocityBuildupMaxPitch bounds the P vector, the acceleration-demand
-//         // term, so the pitch bias while building up to speed is limited; the
-//         // drag feedforward, integral trim and damping ride on top, with the
-//         // maxAngle clamp below as the hard limit on the total.
-//         const float buildupMaxDeg = autopilotConfig()->velocityBuildupMaxPitch;
-//         const float pMag = vector2Norm(&pidP);
-//         if (pMag > buildupMaxDeg) {
-//             buildupClamped = true;
-//             const float scale = (pMag > 0.001f) ? buildupMaxDeg / pMag : 0.0f;
-//             vector2Scale(&pidP, &pidP, scale);
-//             for (unsigned axis = 0; axis < EF_AXIS_COUNT; axis++) {
-//                 pidSumVectorEF.v[axis] = pidP.v[axis] + pidI.v[axis] + pidD.v[axis] + pidA.v[axis] + pidF.v[axis];
-//             }
-//         }
-//     }
+    if (velocityMode || ap.navActive) {
+        // velocityBuildupMaxPitch bounds the velocity-proportional drive vector (now pidD)
+        // so the pitch bias while building up to speed is limited.
+        const float buildupMaxDeg = autopilotConfig()->velocityBuildupMaxPitch;
+        const float dMag = vector2Norm(&pidD);
+        if (dMag > buildupMaxDeg) {
+            buildupClamped = true;
+            const float scale = (dMag > 0.001f) ? buildupMaxDeg / dMag : 0.0f;
+            vector2Scale(&pidD, &pidD, scale);
+            // Re-sum the vectors with the scaled D component
+            for (unsigned axis = 0; axis < EF_AXIS_COUNT; axis++) {
+                pidSumVectorEF.v[axis] = pidP.v[axis] + pidI.v[axis] + pidD.v[axis] + pidA.v[axis] + pidF.v[axis];
+            }
+        }
+    }
 
     // Rotation from Earth Frame to Body Frame
     const float headingRad = DECIDEGREES_TO_RADIANS(attitude.values.yaw);
