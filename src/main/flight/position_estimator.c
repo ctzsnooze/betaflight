@@ -41,6 +41,7 @@
 #include "flight/position.h"
 
 #include "sensors/acceleration.h"
+#include "sensors/gyro.h"
 #include "sensors/sensors.h"
 
 #ifdef USE_BARO
@@ -190,6 +191,7 @@ static float qJerkXY = Q_JERK_XY;
 // static float accelerationMagnitude; // for testing to use for R adaptation based on velocity
 static timeUs_t lastXYMeasurementUs = 0;
 static timeUs_t lastZMeasurementUs = 0;
+static unsigned debugAxis; //  0 for East, 1 for North - NEED TO CHANGE TO INCLUDE Up=2
 
 static sensorCalEntry_t zCal[CAL_Z_COUNT];
 
@@ -260,6 +262,8 @@ void positionEstimatorInit(void)
     xyEnabled = false;
     lastXYMeasurementUs = 0;
     lastZMeasurementUs = 0;
+    debugAxis = (gyroConfig()->gyro_filter_debug_axis == FD_PITCH) ? 1 : 0; //  0 for East, 1 for North
+
 
 #ifdef USE_GPS
     gpsStamp = 0;
@@ -552,9 +556,11 @@ static void feedGPSMeasurements(timeUs_t nowUs)
         GPS_distance2d(&armLocationGps, &gpsSol.llh, &gpsDistCm);
 
         const uint16_t xyDop = gpsDopOrFallback(gpsSol.dop.hdop, gpsSol.dop.pdop);
-        const float rPos = gpsR(R_GPS_POS_BASE, xyDop) * noiseScale;
-        kalmanUpdatePosition(&kfEast, gpsDistCm.v[EF_EAST], rPos);
-        kalmanUpdatePosition(&kfNorth, gpsDistCm.v[EF_NORTH], rPos);
+        const float rGpsPos = gpsR(R_GPS_POS_BASE, xyDop) * noiseScale;
+        DEBUG_SET(DEBUG_POSITION_EST, 6, lrintf(rGpsPos)); // temporary debug for testing
+
+        kalmanUpdatePosition(&kfEast, gpsDistCm.v[EF_EAST], rGpsPos);
+        kalmanUpdatePosition(&kfNorth, gpsDistCm.v[EF_NORTH], rGpsPos);
 
         // GPS velocity (NED from UBX) -> ENU
 
@@ -575,10 +581,12 @@ static void feedGPSMeasurements(timeUs_t nowUs)
 //         accelScale = 1.0f;
 //         const float rVel = gpsR(R_GPS_VEL_BASE, xyDop) * noiseScale * accelScale;
 
-        const float rVel = gpsR(R_GPS_VEL_BASE, xyDop) * noiseScale;
+        const float rGpsVel = gpsR(R_GPS_VEL_BASE, xyDop) * noiseScale;
+        DEBUG_SET(DEBUG_POSITION_EST, 7, lrintf(rGpsPos)); // temporary debug for testing
 
-kalmanUpdateVelocity(&kfEast, (float)gpsSol.velned.velE, rVel);
-kalmanUpdateVelocity(&kfNorth, (float)gpsSol.velned.velN, rVel);
+
+kalmanUpdateVelocity(&kfEast, (float)gpsSol.velned.velE, rGpsVel);
+kalmanUpdateVelocity(&kfNorth, (float)gpsSol.velned.velN, rGpsVel);
 
         lastXYMeasurementUs = nowUs;
     }
@@ -807,6 +815,9 @@ void positionEstimatorUpdate(void)
     float accelEast, accelNorth, accelUp;
     getLinearAccelENU(&accelEast, &accelNorth, &accelUp);
 
+    const float accelToLog = (debugAxis == 0) ? accelEast : accelNorth;
+    DEBUG_SET(DEBUG_POSITION_EST, 5, lrintf(accelToLog));
+
 //    accelerationMagnitude = sqrtf(accelEast * accelEast + accelNorth * accelNorth);
 
     // Z-axis: always runs (for altitude hold, OSD, vario). While disarmed,
@@ -843,6 +854,10 @@ void positionEstimatorUpdate(void)
     estimate.acceleration.v[ENU_N] = kalmanGetAcceleration(&kfNorth);
     estimate.acceleration.v[ENU_U] = kalmanGetAcceleration(&kfUp);
 
+    DEBUG_SET(DEBUG_POSITION_EST, 0, lrintf(estimate.position.v[debugAxis]));
+    DEBUG_SET(DEBUG_POSITION_EST, 1, lrintf(estimate.velocity.v[debugAxis]));
+    DEBUG_SET(DEBUG_POSITION_EST, 2, lrintf(estimate.acceleration.v[debugAxis]));
+    
     // Validity: based on recent measurement updates
     if (xyEnabled) {
         estimate.isValidXY = (lastXYMeasurementUs > 0) &&
