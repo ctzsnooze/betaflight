@@ -139,32 +139,42 @@ void kalmanUpdateVelocity(positionKalman_t *kf, float measuredVel, float R)
 
 void kalmanUpdateAcceleration(positionKalman_t *kf, float measuredAccel, float R)
 {
-    const float Paa = kf->P[KF_ACCELERATION][KF_ACCELERATION];
-    const float S = Paa + R;
-
-    if (S < 1e-9f) {
-        return;
-    }
-
-    const float gain = Paa / S;
-    const float innovation = measuredAccel - kf->x[KF_ACCELERATION];
-
-    // Update the acceleration estimate.
-    kf->x[KF_ACCELERATION] += gain * innovation;
-
-    // Add an acceleration contribution to velocity.
-    kf->x[KF_VELOCITY] += kf->x[KF_ACCELERATION] * 0.01f;
-
-    const float scale = 1.0f - gain;
-
-    kf->P[KF_POSITION][KF_ACCELERATION] *= scale;
-    kf->P[KF_ACCELERATION][KF_POSITION] =
-        kf->P[KF_POSITION][KF_ACCELERATION];
-
-    kf->P[KF_VELOCITY][KF_ACCELERATION] *= scale;
-    kf->P[KF_ACCELERATION][KF_VELOCITY] =
-        kf->P[KF_VELOCITY][KF_ACCELERATION];
-
-    kf->P[KF_ACCELERATION][KF_ACCELERATION] =
-        scale * scale * Paa + gain * gain * R;
+    kalmanUpdateScalar(kf, KF_VELOCITY, measuredAccel, R);
 }
+
+
+// *** REVERT kalmanUpdateAcceleration ***
+// velocity again includes integral of accelerometer innovation
+
+// Reverts this change, in which velocity only includes integral of accelerometer value, possibly doing this twice
+// void kalmanUpdateAcceleration(positionKalman_t *kf, float measuredAccel, float R)
+// {
+//     const float Paa = kf->P[KF_ACCELERATION][KF_ACCELERATION];
+//     const float S = Paa + R;
+// 
+//     if (S < 1e-9f) {
+//         return;
+//     }
+// 
+//     const float gain = Paa / S;
+//     const float innovation = measuredAccel - kf->x[KF_ACCELERATION];
+// 
+//     // Update the acceleration estimate.
+//     kf->x[KF_ACCELERATION] += gain * innovation;
+// 
+//     // Add an acceleration contribution to velocity.
+//     kf->x[KF_VELOCITY] += kf->x[KF_ACCELERATION] * 0.01f;
+// 
+//     const float scale = 1.0f - gain;
+// 
+//     kf->P[KF_POSITION][KF_ACCELERATION] *= scale;
+//     kf->P[KF_ACCELERATION][KF_POSITION] =
+//         kf->P[KF_POSITION][KF_ACCELERATION];
+// 
+//     kf->P[KF_VELOCITY][KF_ACCELERATION] *= scale;
+//     kf->P[KF_ACCELERATION][KF_VELOCITY] =
+//         kf->P[KF_VELOCITY][KF_ACCELERATION];
+// 
+//     kf->P[KF_ACCELERATION][KF_ACCELERATION] =
+//         scale * scale * Paa + gain * gain * R;
+// }
