@@ -66,23 +66,28 @@
 #include "pg/pos_hold.h"
 #endif
 
-// Accelerometer process noise in (cm/s^2)^2.
-// Accounts for vibration, bias drift, attitude errors.
-// Higher = less trust in accel dead-reckoning, more reliance on sensor corrections.
-#define Q_ACCEL_XY          50000.0f
-#define Q_ACCEL_Z           20000.0f // lower value favours faster acc changes, 700.0f is too low
+// Constant-acceleration 3 state model tuning
+// Q or Jerk (process noise): higher allows faster adaptations to data change / offset
+// R or Measurement noise:  higher means less trust in that input
+
+#define Q_JERK_XY         3000.0f // lower gives smoother, damped acceleration but doesn't smooth  velocity much; below 500 attenuates output acceleration
+#define R_ACCEL_XY        2000.0f
+#define R_GPS_VEL_BASE    2000.0f // reduced when horizontal acceleration is low and ramped during GPS packets.
+
+#define R_GPS_POS_BASE     2000.0f      // cm^2 at pDOP=1.0 // typically 10x to 100x vel r
+#define R_OPTICALFLOW_VEL   400.0f     // (cm/s)^2 at max quality
+
+
+#define Q_JERK_Z         3000.0f
+#define R_ACCEL_Z        5000.0f
+#define R_GPS_ALT_BASE    100.0f      // cm^2 at pDOP=1.0, higher favours other sensors over GPS
+#define R_BARO_ALT        200.0f     // cm^2 lower value favours rapid baro changes
+#define R_RANGEFINDER_ALT 100.0f     // cm^2
 
 // Initial covariance values
 #define INITIAL_POS_VAR     10000.0f    // cm^2  (1m uncertainty)
 #define INITIAL_VEL_VAR     10000.0f    // (cm/s)^2
-
-// Measurement noise base values (R)
-#define R_GPS_POS_BASE       500.0f      // cm^2 at pDOP=1.0
-#define R_GPS_VEL_BASE       100.0f      // (cm/s)^2 at pDOP=1.0 //  low value to tightly track GPS but allow some acc influence
-#define R_GPS_ALT_BASE     60000.0f      // cm^2 at pDOP=1.0, higher favours other sensors over GPS
-#define R_BARO_ALT          1500.0f     // cm^2 lower value favours rapid baro changes
-#define R_RANGEFINDER_ALT    100.0f     // cm^2
-#define R_OPTICALFLOW_VEL    400.0f     // (cm/s)^2 at max quality
+#define INITIAL_ACCEL_VAR   10000.0f  // (cm/s^2)^2; acquire IMU acceleration quickly
 
 #define GRAVITY_CMSS        980.665f
 
@@ -181,8 +186,8 @@ static positionKalman_t kfUp;
 static positionEstimate3d_t estimate;
 
 static bool xyEnabled = false;
-static float qaccelXY = Q_ACCEL_XY; // value to use for QAccel
-
+static float qJerkXY = Q_JERK_XY;
+// static float accelerationMagnitude; // for testing to use for R adaptation based on velocity
 static timeUs_t lastXYMeasurementUs = 0;
 static timeUs_t lastZMeasurementUs = 0;
 
@@ -190,6 +195,8 @@ static sensorCalEntry_t zCal[CAL_Z_COUNT];
 
 #ifdef USE_GPS
 static uint16_t gpsStamp = 0;
+static bool gpsDataAvailable = false;
+static timeUs_t gpsDataReceivedAtUs = 0;
 static gpsLocation_t armLocationGps;
 static bool gpsArmLocationSet = false;
 static float gpsAltOffsetCm = 0.0f;
@@ -200,11 +207,26 @@ static bool gpsAltOffsetSet = false;
 static float baroAltOffsetCm = 0.0f;
 static float baroAltAccumulator = 0.0f;
 static bool baroOffsetSet = false;
+static bool baroDataAvailable = false;
+static timeUs_t baroTimestampUs = 0;
+static timeDelta_t baroHoldDurationUs = 0;
+static float baroMeasurementNoiseScale = 1.0f;
 #endif
 
 #ifdef USE_RANGEFINDER
 static float rangefinderAltOffsetCm = 0.0f;
 static bool rangefinderOffsetSet = false;
+static bool rangefinderDataAvailable = false;
+static timeUs_t rangefinderTimestampUs = 0;
+static timeDelta_t rangefinderHoldDurationUs = 0;
+static float rangefinderMeasurementNoiseScale = 1.0f;
+#endif
+
+#ifdef USE_OPTICALFLOW
+static bool opticalFlowDataAvailable = false;
+static timeUs_t opticalFlowTimestampUs = 0;
+static timeDelta_t opticalFlowHoldDurationUs = 0;
+static float opticalFlowMeasurementNoiseScale = 1.0f;
 #endif
 
 static void initZCalEntries(void)
@@ -224,15 +246,12 @@ static void initZCalEntries(void)
 void positionEstimatorInit(void)
 {
 
-#if defined(USE_POSITION_HOLD)
-    qaccelXY = Q_ACCEL_XY * ((autopilotConfig()->positionA > 1) ?  (30.0f / autopilotConfig()->positionA ) : 15.0f);
-    // when user reduces positionA, , they want more accelerometer influence (up to 15x more), and vice versa
-#endif
-    kalmanInit(&kfEast, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, qaccelXY);
-    kalmanInit(&kfNorth, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, qaccelXY);
-    kalmanInit(&kfUp, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, Q_ACCEL_Z);
+    kalmanInit(&kfEast, 0.0f, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, INITIAL_ACCEL_VAR, Q_JERK_XY);
+    kalmanInit(&kfNorth, 0.0f, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, INITIAL_ACCEL_VAR, Q_JERK_XY);
+    kalmanInit(&kfUp, 0.0f, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, INITIAL_ACCEL_VAR, Q_JERK_Z);
     estimate.position = (vector3_t){{0, 0, 0}};
     estimate.velocity = (vector3_t){{0, 0, 0}};
+    estimate.acceleration = (vector3_t){{0, 0, 0}};
     estimate.trustXY = 0.0f;
     estimate.trustZ = 0.0f;
     estimate.isValidXY = false;
@@ -244,6 +263,8 @@ void positionEstimatorInit(void)
 
 #ifdef USE_GPS
     gpsStamp = 0;
+    gpsDataAvailable = false;
+    gpsDataReceivedAtUs = 0;
     gpsArmLocationSet = false;
     gpsAltOffsetCm = 0.0f;
     gpsAltOffsetSet = false;
@@ -252,10 +273,24 @@ void positionEstimatorInit(void)
     baroAltOffsetCm = 0.0f;
     baroAltAccumulator = 0.0f;
     baroOffsetSet = false;
+    baroDataAvailable = false;
+    baroTimestampUs = 0;
+    baroHoldDurationUs = 0;
+    baroMeasurementNoiseScale = 1.0f;
 #endif
 #ifdef USE_RANGEFINDER
     rangefinderAltOffsetCm = 0.0f;
     rangefinderOffsetSet = false;
+    rangefinderDataAvailable = false;
+    rangefinderTimestampUs = 0;
+    rangefinderHoldDurationUs = 0;
+    rangefinderMeasurementNoiseScale = 1.0f;
+#endif
+#ifdef USE_OPTICALFLOW
+    opticalFlowDataAvailable = false;
+    opticalFlowTimestampUs = 0;
+    opticalFlowHoldDurationUs = 0;
+    opticalFlowMeasurementNoiseScale = 1.0f;
 #endif
 
     initZCalEntries();
@@ -264,12 +299,14 @@ void positionEstimatorInit(void)
 void positionEstimatorEnableXY(bool enable)
 {
     if (enable && !xyEnabled) {
-        kalmanInit(&kfEast, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, qaccelXY);
-        kalmanInit(&kfNorth, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, qaccelXY);
+        kalmanInit(&kfEast, 0.0f, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, INITIAL_ACCEL_VAR, qJerkXY);
+        kalmanInit(&kfNorth, 0.0f, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, INITIAL_ACCEL_VAR, qJerkXY);
         estimate.position.v[ENU_E] = 0.0f;
         estimate.position.v[ENU_N] = 0.0f;
         estimate.velocity.v[ENU_E] = 0.0f;
         estimate.velocity.v[ENU_N] = 0.0f;
+        estimate.acceleration.v[ENU_E] = 0.0f;
+        estimate.acceleration.v[ENU_N] = 0.0f;
         lastXYMeasurementUs = 0;
         estimate.isValidXY = false;
 #ifdef USE_GPS
@@ -324,7 +361,108 @@ static uint16_t gpsDopOrFallback(uint16_t preferredDop, uint16_t fallbackDop)
 {
     return (preferredDop >= GPS_DOP_MIN_VALID) ? preferredDop : fallbackDop;
 }
+
+STATIC_UNIT_TESTED bool gpsMeasurementReadyForFusion(timeUs_t nowUs, float *noiseScale)
+{
+    UNUSED(nowUs); 
+    
+    static int stepsSinceNewGps = 0;
+    static int expectedStepsPerGpsInterval = 10;
+
+    const bool hasNewData = gpsHasNewData(&gpsStamp);
+    if (hasNewData) {
+        const float gpsFrequencyHz = getGpsDataFrequencyHz();
+        gpsDataAvailable = true;
+        float freq = (gpsFrequencyHz > 0.0f) ? gpsFrequencyHz : 10.0f;
+        expectedStepsPerGpsInterval = (int)((float)TASK_ALTITUDE_RATE_HZ / freq + 0.5f);
+        if (expectedStepsPerGpsInterval < 1) expectedStepsPerGpsInterval = 1;
+        stepsSinceNewGps = 0; 
+    }
+
+    int absoluteTimeoutLimit = expectedStepsPerGpsInterval * 3 / 2;
+    if (!hasNewData && (!gpsDataAvailable || stepsSinceNewGps >= absoluteTimeoutLimit)) {
+        return false; 
+    }
+
+    int rMultiplier = expectedStepsPerGpsInterval - stepsSinceNewGps;
+    if (rMultiplier < 1) {
+        rMultiplier = 0;
+    }
+    stepsSinceNewGps++;
+    const float noiseScaleGPS = 1.0f + (float)rMultiplier / expectedStepsPerGpsInterval; // 2->1
+
+    *noiseScale = noiseScaleGPS;
+    return true;
+}
 #endif
+
+
+
+#ifdef USE_BARO
+// A complete pressure-conversion cycle can be slower than the barometer task's
+// scheduler rate. Use timestamps from valid altitude samples so conversion
+// delays and target-specific barometer rates are both accounted for.
+STATIC_UNIT_TESTED bool baroMeasurementReadyForFusion(timeUs_t nowUs, float *noiseScale)
+{
+    const timeUs_t sampleTimeUs = getBaroLatestSampleTimeUs();
+    const bool hasNewData = !baroDataAvailable || sampleTimeUs != baroTimestampUs;
+    if (hasNewData) {
+        const timeDelta_t sourceIntervalUs = getBaroSampleIntervalUs();
+
+        baroDataAvailable = true;
+        baroTimestampUs = sampleTimeUs;
+        baroHoldDurationUs = sourceIntervalUs;
+        baroMeasurementNoiseScale = fmaxf(
+            (float)TASK_ALTITUDE_RATE_HZ * sourceIntervalUs * 1e-6f,
+            1.0f);
+    }
+
+    const timeDelta_t sampleAgeUs = cmpTimeUs(nowUs, baroTimestampUs);
+    const bool withinHoldInterval = baroDataAvailable &&
+        baroHoldDurationUs > 0 &&
+        sampleAgeUs >= 0 &&
+        sampleAgeUs < baroHoldDurationUs;
+    if ((!hasNewData || baroHoldDurationUs > 0) && !withinHoldInterval) {
+        return false;
+    }
+
+    *noiseScale = baroMeasurementNoiseScale;
+    return true;
+}
+#endif
+
+#ifdef USE_RANGEFINDER
+// rangefinderProcess() timestamps only actual device samples, so its measured
+// interval remains correct when a driver task polls faster than the hardware
+// data rate (the UP-T1 polls at 100 Hz for a 50 Hz data stream, for example).
+STATIC_UNIT_TESTED bool rangefinderMeasurementReadyForFusion(timeUs_t nowUs, float *noiseScale)
+{
+    const timeUs_t sampleTimeUs = rangefinderGetLatestSampleTimeUs();
+    const bool hasNewData = !rangefinderDataAvailable || sampleTimeUs != rangefinderTimestampUs;
+    if (hasNewData) {
+        const timeDelta_t sourceIntervalUs = rangefinderGetSampleIntervalUs();
+
+        rangefinderDataAvailable = true;
+        rangefinderTimestampUs = sampleTimeUs;
+        rangefinderHoldDurationUs = sourceIntervalUs;
+        rangefinderMeasurementNoiseScale = fmaxf(
+            (float)TASK_ALTITUDE_RATE_HZ * sourceIntervalUs * 1e-6f,
+            1.0f);
+    }
+    const timeDelta_t sampleAgeUs = cmpTimeUs(nowUs, rangefinderTimestampUs);
+    const bool withinHoldInterval = rangefinderDataAvailable &&
+        rangefinderHoldDurationUs > 0 &&
+        sampleAgeUs >= 0 &&
+        sampleAgeUs < rangefinderHoldDurationUs;
+    if ((!hasNewData || rangefinderHoldDurationUs > 0) && !withinHoldInterval) {
+        return false;
+    }
+    *noiseScale = rangefinderMeasurementNoiseScale;
+    return true;
+}
+#endif
+
+
 
 #ifdef USE_OPTICALFLOW
 static float opticalFlowR(int16_t quality)
@@ -341,20 +479,58 @@ static float opticalFlowR(int16_t quality)
     const float qualityNorm = constrainf((float)(quality - minQuality) / (100.0f - minQuality), 0.01f, 1.0f);
     return R_OPTICALFLOW_VEL / qualityNorm;
 }
+
+// Optical-flow drivers expose the timestamp of the last processed sensor
+// sample. Use its measured cadence after the first sample; delayMs is only the
+// nominal first-sample fallback. This avoids mistaking a driver's faster
+// polling rate (such as the UP-T1 rangefinder's 2x polling) for its data rate.
+STATIC_UNIT_TESTED bool opticalFlowMeasurementReadyForFusion(timeUs_t nowUs, const opticalflow_t *flow, float *noiseScale)
+{
+    const bool hasNewData = !opticalFlowDataAvailable || flow->timeStampUs != opticalFlowTimestampUs;
+    if (hasNewData) {
+        timeDelta_t sourceIntervalUs = (timeDelta_t)flow->dev.delayMs * 1000;
+        if (opticalFlowDataAvailable) {
+            const timeDelta_t measuredIntervalUs = cmpTimeUs(flow->timeStampUs, opticalFlowTimestampUs);
+            if (measuredIntervalUs > 0 && measuredIntervalUs <= OPTICALFLOW_HARDWARE_TIMEOUT_US) {
+                sourceIntervalUs = measuredIntervalUs;
+            }
+        }
+
+        opticalFlowDataAvailable = true;
+        opticalFlowTimestampUs = flow->timeStampUs;
+        opticalFlowHoldDurationUs = sourceIntervalUs;
+        opticalFlowMeasurementNoiseScale = fmaxf(
+            (float)TASK_ALTITUDE_RATE_HZ * sourceIntervalUs * 1e-6f,
+            1.0f);
+    }
+
+    const timeDelta_t sampleAgeUs = cmpTimeUs(nowUs, opticalFlowTimestampUs);
+    const bool withinHoldInterval = opticalFlowDataAvailable &&
+        opticalFlowHoldDurationUs > 0 &&
+        sampleAgeUs >= 0 &&
+        sampleAgeUs < opticalFlowHoldDurationUs;
+    if (!hasNewData && !withinHoldInterval) {
+        return false;
+    }
+
+    *noiseScale = opticalFlowMeasurementNoiseScale;
+    return true;
+}
 #endif
 
 static void feedGPSMeasurements(timeUs_t nowUs)
 {
 #ifdef USE_GPS
     if (!sensors(SENSOR_GPS) || !STATE(GPS_FIX)) {
+        gpsDataAvailable = false;
         return;
     }
 
-    if (!gpsHasNewData(&gpsStamp)) {
+    float noiseScale;
+    if (!gpsMeasurementReadyForFusion(nowUs, &noiseScale)) {
         return;
     }
 
-    // Determine which measurements are allowed by source settings
 #if defined(USE_POSITION_HOLD) && !defined(USE_WING)
     const uint8_t posSource = posHoldConfig()->positionSource;
     const bool gpsXYAllowed = (posSource != POSHOLD_SOURCE_OPTICALFLOW_ONLY);
@@ -366,30 +542,43 @@ static void feedGPSMeasurements(timeUs_t nowUs)
                                 altSource == ALTITUDE_SOURCE_GPS_ONLY ||
                                 altSource == ALTITUDE_SOURCE_RANGEFINDER_PREFER);
 
-    // Late origin capture: if XY fusion was enabled before GPS_FIX became
-    // available (e.g. opticalflow-only arm), grab the origin the first time
-    // a valid fix arrives so downstream consumers (flight plan) can proceed.
     if (xyEnabled && !gpsArmLocationSet && gpsXYAllowed) {
         armLocationGps = gpsSol.llh;
         gpsArmLocationSet = true;
     }
 
-    // XY position + velocity measurements
     if (xyEnabled && gpsXYAllowed && gpsArmLocationSet) {
         vector2_t gpsDistCm;
         GPS_distance2d(&armLocationGps, &gpsSol.llh, &gpsDistCm);
-        // gpsDistCm is a 2-axis horizontal earth-frame vector (efAxis_e):
-        // v[EF_EAST] = East (lon), v[EF_NORTH] = North (lat) relative to the arm point.
 
         const uint16_t xyDop = gpsDopOrFallback(gpsSol.dop.hdop, gpsSol.dop.pdop);
-        const float rPos = gpsR(R_GPS_POS_BASE, xyDop);
+        const float rPos = gpsR(R_GPS_POS_BASE, xyDop) * noiseScale;
         kalmanUpdatePosition(&kfEast, gpsDistCm.v[EF_EAST], rPos);
         kalmanUpdatePosition(&kfNorth, gpsDistCm.v[EF_NORTH], rPos);
 
         // GPS velocity (NED from UBX) -> ENU
-        const float rVel = gpsR(R_GPS_VEL_BASE, xyDop);
-        kalmanUpdateVelocity(&kfEast, (float)gpsSol.velned.velE, rVel);
-        kalmanUpdateVelocity(&kfNorth, (float)gpsSol.velned.velN, rVel);
+
+        // trust GPS more at low acceleration rates ** not needed now
+//         static float smoothedAcceleration = 0.0f;
+//         smoothedAcceleration = 0.05f * accelerationMagnitude + 0.95f * smoothedAcceleration;
+//         const float accelerationThreshold = 300.0f;
+//         const float accelRatio = constrainf(smoothedAcceleration / accelerationThreshold, 0.0f, 1.0f);
+//         float accelScale = 0.02f + 0.98f * accelRatio * accelRatio;
+//        // at default R_GPS_VEL_BASE of 1000, strongly favour GPS at low accelerations to avoid DC offsets in velocity
+//         // 0   cm/s² -> R ≈ 20
+//         //  50  cm/s² -> R ≈ 47
+//         // 100 cm/s² -> R ≈ 129
+//         // 150 cm/s² -> R ≈ 265
+//         // 200 cm/s² -> R ≈ 456
+//         //  250 cm/s² -> R ≈ 701
+//         // 300 cm/s² -> R = 1000
+//         accelScale = 1.0f;
+//         const float rVel = gpsR(R_GPS_VEL_BASE, xyDop) * noiseScale * accelScale;
+
+        const float rVel = gpsR(R_GPS_VEL_BASE, xyDop) * noiseScale;
+
+kalmanUpdateVelocity(&kfEast, (float)gpsSol.velned.velE, rVel);
+kalmanUpdateVelocity(&kfNorth, (float)gpsSol.velned.velN, rVel);
 
         lastXYMeasurementUs = nowUs;
     }
@@ -405,7 +594,7 @@ static void feedGPSMeasurements(timeUs_t nowUs)
         // altitude_prefer_baro=100 means strongly prefer baro, so GPS R should be higher
         const float baroPreference = positionConfig()->altitude_prefer_baro * 0.01f;
         const uint16_t altDop = gpsDopOrFallback(gpsSol.dop.vdop, gpsSol.dop.pdop);
-        const float gpsAltR = gpsR(R_GPS_ALT_BASE, altDop) * (1.0f + baroPreference * 2.0f);
+        const float gpsAltR = gpsR(R_GPS_ALT_BASE, altDop) * (1.0f + baroPreference * 2.0f) * noiseScale;
 
         const float gpsRelativeAltCm = gpsSol.llh.altCm - gpsAltOffsetCm;
         kalmanUpdatePosition(&kfUp, gpsRelativeAltCm, gpsAltR);
@@ -423,6 +612,7 @@ static void feedBaroMeasurements(timeUs_t nowUs)
 {
 #ifdef USE_BARO
     if (!sensors(SENSOR_BARO)) {
+        baroDataAvailable = false;
         return;
     }
 
@@ -433,6 +623,11 @@ static void feedBaroMeasurements(timeUs_t nowUs)
     }
 
     const float baroAltCm = getBaroAltitude();
+
+    float noiseScale;
+    if (!baroMeasurementReadyForFusion(nowUs, &noiseScale)) {
+        return;
+    }
 
     if (!baroOffsetSet) {
         // Capture disarmed baseline once; keep live relative altitude while disarmed.
@@ -445,7 +640,7 @@ static void feedBaroMeasurements(timeUs_t nowUs)
     const float baroPreference = constrainf(positionConfig()->altitude_prefer_baro * 0.01f, 0.01f, 1.0f);
     const float baroR = R_BARO_ALT / baroPreference;
 
-    kalmanUpdatePosition(&kfUp, baroAltCm - baroAltOffsetCm, baroR);
+    kalmanUpdatePosition(&kfUp, baroAltCm - baroAltOffsetCm, baroR * noiseScale);
     lastZMeasurementUs = nowUs;
 
     zCal[CAL_Z_BARO].rawReading = baroAltCm;
@@ -466,6 +661,12 @@ static void feedRangefinderMeasurements(timeUs_t nowUs)
 
     float altCm;
     if (!rangefinderSampleAltitudeCm(&altCm, positionConfig()->rangefinder_max_range_cm)) {
+        rangefinderDataAvailable = false;
+        return;
+    }
+
+    float noiseScale;
+    if (!rangefinderMeasurementReadyForFusion(nowUs, &noiseScale)) {
         return;
     }
 
@@ -481,7 +682,7 @@ static void feedRangefinderMeasurements(timeUs_t nowUs)
         rfR *= 0.25f;  // even lower noise -> stronger pull
     }
 
-    kalmanUpdatePosition(&kfUp, altCm - rangefinderAltOffsetCm, rfR);
+    kalmanUpdatePosition(&kfUp, altCm - rangefinderAltOffsetCm, rfR * noiseScale);
     lastZMeasurementUs = nowUs;
 
     zCal[CAL_Z_RF].rawReading = altCm;
@@ -499,6 +700,7 @@ static void feedOpticalFlowMeasurements(timeUs_t nowUs)
     }
 
     if (!sensors(SENSOR_OPTICALFLOW) || !isOpticalflowHealthy()) {
+        opticalFlowDataAvailable = false;
         return;
     }
 
@@ -539,6 +741,11 @@ static void feedOpticalFlowMeasurements(timeUs_t nowUs)
         return;  // quality too low
     }
 
+    float noiseScale;
+    if (!opticalFlowMeasurementReadyForFusion(nowUs, flow, &noiseScale)) {
+        return;
+    }
+
     // Convert flow rates (rad/s) to velocity (cm/s) in body frame, scaled by rangefinder height.
     // Flow sensor X axis measures rightward motion; Y axis measures forward motion.
     const float flowRight   = flow->processedFlowRates.x * altitudeCm;
@@ -557,8 +764,8 @@ static void feedOpticalFlowMeasurements(timeUs_t nowUs)
     const float velEast  =  velForward * sinYaw - velRight * cosYaw;
     const float velNorth =  velForward * cosYaw + velRight * sinYaw;
 
-    kalmanUpdateVelocity(&kfEast, velEast, flowR);
-    kalmanUpdateVelocity(&kfNorth, velNorth, flowR);
+    kalmanUpdateVelocity(&kfEast, velEast, flowR * noiseScale);
+    kalmanUpdateVelocity(&kfNorth, velNorth, flowR * noiseScale);
 
     lastXYMeasurementUs = nowUs;
 #else
@@ -600,15 +807,20 @@ void positionEstimatorUpdate(void)
     float accelEast, accelNorth, accelUp;
     getLinearAccelENU(&accelEast, &accelNorth, &accelUp);
 
-    // Z-axis: always runs (for altitude hold, OSD, vario).
-    // While disarmed, predict with zero acceleration so covariance continues to evolve
-    // and incoming baro/rangefinder updates remain responsive.
-    kalmanPredict(&kfUp, dt, ARMING_FLAG(ARMED) ? accelUp : 0.0f);
+//    accelerationMagnitude = sqrtf(accelEast * accelEast + accelNorth * accelNorth);
+
+    // Z-axis: always runs (for altitude hold, OSD, vario). While disarmed,
+    // measure zero acceleration so covariance continues to evolve without
+    // integrating small gravity-removal errors.
+    kalmanPredict(&kfUp, dt);
+    kalmanUpdateAcceleration(&kfUp, ARMING_FLAG(ARMED) ? accelUp : 0.0f, R_ACCEL_Z);
 
     // XY axes: only when a consumer is active
     if (xyEnabled && ARMING_FLAG(ARMED)) {
-        kalmanPredict(&kfEast, dt, accelEast);
-        kalmanPredict(&kfNorth, dt, accelNorth);
+        kalmanPredict(&kfEast, dt);
+        kalmanPredict(&kfNorth, dt);
+        kalmanUpdateAcceleration(&kfEast, accelEast, R_ACCEL_XY);
+        kalmanUpdateAcceleration(&kfNorth, accelNorth, R_ACCEL_XY);
     }
 
     // Feed sensor measurements (order does not matter)
@@ -624,10 +836,12 @@ void positionEstimatorUpdate(void)
     estimate.position.v[ENU_E] = kalmanGetPosition(&kfEast);
     estimate.position.v[ENU_N] = kalmanGetPosition(&kfNorth);
     estimate.position.v[ENU_U] = kalmanGetPosition(&kfUp);
-
     estimate.velocity.v[ENU_E] = kalmanGetVelocity(&kfEast);
     estimate.velocity.v[ENU_N] = kalmanGetVelocity(&kfNorth);
     estimate.velocity.v[ENU_U] = kalmanGetVelocity(&kfUp);
+    estimate.acceleration.v[ENU_E] = kalmanGetAcceleration(&kfEast);
+    estimate.acceleration.v[ENU_N] = kalmanGetAcceleration(&kfNorth);
+    estimate.acceleration.v[ENU_U] = kalmanGetAcceleration(&kfUp);
 
     // Validity: based on recent measurement updates
     if (xyEnabled) {
@@ -700,9 +914,10 @@ bool positionEstimatorIsHeadingRequired(void)
 
 void positionEstimatorResetZ(void)
 {
-    kalmanInit(&kfUp, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, Q_ACCEL_Z);
+    kalmanInit(&kfUp, 0.0f, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, INITIAL_ACCEL_VAR, Q_JERK_Z);
     estimate.position.v[ENU_U] = 0.0f;
     estimate.velocity.v[ENU_U] = 0.0f;
+    estimate.acceleration.v[ENU_U] = 0.0f;
     estimate.isValidZ = false;
     lastZMeasurementUs = 0;
 #ifdef USE_GPS
@@ -724,12 +939,14 @@ void positionEstimatorResetZ(void)
 
 void positionEstimatorResetXY(void)
 {
-    kalmanInit(&kfEast, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, Q_ACCEL_XY);
-    kalmanInit(&kfNorth, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, Q_ACCEL_XY);
+    kalmanInit(&kfEast, 0.0f, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, INITIAL_ACCEL_VAR, qJerkXY);
+    kalmanInit(&kfNorth, 0.0f, 0.0f, 0.0f, INITIAL_POS_VAR, INITIAL_VEL_VAR, INITIAL_ACCEL_VAR, qJerkXY);
     estimate.position.v[ENU_E] = 0.0f;
     estimate.position.v[ENU_N] = 0.0f;
     estimate.velocity.v[ENU_E] = 0.0f;
     estimate.velocity.v[ENU_N] = 0.0f;
+    estimate.acceleration.v[ENU_E] = 0.0f;
+    estimate.acceleration.v[ENU_N] = 0.0f;
     estimate.isValidXY = false;
     lastXYMeasurementUs = 0;
 #ifdef USE_GPS

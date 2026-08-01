@@ -875,7 +875,7 @@ bool positionControl(void)
         if (ap.derivativeStale) {
             acceleration = 0.0f;
         } else {
-            acceleration = (previousVelocity.v[axis] - velocity.v[axis]) * POSHOLD_TASK_RATE_HZ;
+            acceleration = -est->acceleration.v[axis];
         }
         previousVelocity.v[axis] = velocity.v[axis];
 
@@ -929,6 +929,8 @@ bool positionControl(void)
         // tunable acceleration feedforward.
         pidF.v[axis] = targetVelocity.v[axis] * xyPid.Kd + targetVelDelta * xyPid.Kf;
     } // End for loop
+
+
     ap.derivativeStale = false;
 
     // Buildup clamp: only in the anchor-off fallback, where the velocity-error
@@ -953,8 +955,8 @@ bool positionControl(void)
     // damping and the I trim ride outside the filter. NOTE: D is on raw measured
     // velocity here — its filter placement is an open tuning item (see PR notes).
     for (unsigned axis = 0; axis < EF_AXIS_COUNT; axis++) {
-        const float noisy = pt3FilterApply(&posNoisyPidsLpf[axis], pidP.v[axis] + pidA.v[axis] + pidF.v[axis]);
-        pidSumVectorEF.v[axis] = pidI.v[axis] + pidD.v[axis] + noisy;
+        const float noisyF = pt3FilterApply(&posNoisyPidsLpf[axis], pidF.v[axis]);
+        pidSumVectorEF.v[axis] = pidP.v[axis] + pidI.v[axis] + pidD.v[axis] + pidA.v[axis] + noisyF;
     }
 
     // Rotation from Earth Frame to Body Frame
@@ -983,8 +985,8 @@ bool positionControl(void)
     if (abortNavRequested)  statusValue += 100;
     if (isPositionHeld)     statusValue += 3; // plus 1, ie 4,  if stopping
     if (ap.sticksActive)    statusValue += 5;
-    DEBUG_SET(DEBUG_AUTOPILOT_PID, 0, lrintf(velocityError.v[ap.debugAxis])); // velocity error
-    DEBUG_SET(DEBUG_AUTOPILOT_PID, 1, lrintf(distanceError.v[ap.debugAxis])); // distance error
+    DEBUG_SET(DEBUG_AUTOPILOT_PID, 0, lrintf(velocity.v[ap.debugAxis]));
+    DEBUG_SET(DEBUG_AUTOPILOT_PID, 1, lrintf(distanceError.v[ap.debugAxis]));
     DEBUG_SET(DEBUG_AUTOPILOT_PID, 2, lrintf(pidP.v[ap.debugAxis] * 10));   
     DEBUG_SET(DEBUG_AUTOPILOT_PID, 3, lrintf(pidI.v[ap.debugAxis] * 10));
     DEBUG_SET(DEBUG_AUTOPILOT_PID, 4, lrintf(pidD.v[ap.debugAxis] * 10));
