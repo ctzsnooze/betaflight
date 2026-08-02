@@ -71,10 +71,9 @@
 // Q or Jerk (process noise): higher allows faster adaptations to data change / offset
 // R or Measurement noise:  higher means less trust in that input
 
-#define Q_JERK_XY         3000.0f // lower gives smoother, damped acceleration but doesn't smooth  velocity much; below 500 attenuates output acceleration
-#define R_ACCEL_XY        2000.0f
+#define Q_JERK_XY         2000.0f // lower gives smoother, damped acceleration but doesn't smooth  velocity much; below 500 attenuates output acceleration
+#define R_ACCEL_XY        3000.0f
 #define R_GPS_VEL_BASE    2000.0f // reduced when horizontal acceleration is low and ramped during GPS packets.
-
 #define R_GPS_POS_BASE     2000.0f      // cm^2 at pDOP=1.0
 //Base GPS variance (R)  is further scaled by GPS upsampling, DOP², and packet-phase weighting.
 #define R_OPTICALFLOW_VEL   400.0f     // (cm/s)^2 at max quality
