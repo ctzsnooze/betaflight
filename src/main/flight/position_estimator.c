@@ -73,9 +73,8 @@
 
 #define Q_JERK_XY         2000.0f // lower gives smoother, damped acceleration but doesn't smooth  velocity much; below 500 attenuates output acceleration
 #define R_ACCEL_XY        3000.0f
-#define R_GPS_VEL_BASE    2000.0f // reduced when horizontal acceleration is low and ramped during GPS packets.
-#define R_GPS_POS_BASE     2000.0f      // cm^2 at pDOP=1.0
-//Base GPS variance (R)  is further scaled by GPS upsampling, DOP², and packet-phase weighting.
+#define R_GPS_VEL_BASE    2000.0f // ramped during GPS packets, avg increase 1.5x, also inceased as DOP increases
+#define R_GPS_POS_BASE     2000.0f      // cm^2 at pDOP=1.0, also ramped and increased as DOP widens
 #define R_OPTICALFLOW_VEL   400.0f     // (cm/s)^2 at max quality
 
 #define Q_JERK_Z         3000.0f
@@ -391,7 +390,7 @@ int noiseScaleSteps = (2 * expectedStepsPerGpsInterval) - stepsSinceNewGps;
 if (noiseScaleSteps < expectedStepsPerGpsInterval) {
     noiseScaleSteps = expectedStepsPerGpsInterval;
 }
-*noiseScale = (float)noiseScaleSteps / (float)expectedStepsPerGpsInterval;
+*noiseScale = (float)noiseScaleSteps / (float)expectedStepsPerGpsInterval; // ramps down  from 2->1
 stepsSinceNewGps++;
 
 return true;
@@ -561,24 +560,6 @@ static void feedGPSMeasurements(timeUs_t nowUs)
         kalmanUpdatePosition(&kfNorth, gpsDistCm.v[EF_NORTH], rGpsPos);
 
         // GPS velocity (NED from UBX) -> ENU
-
-        // trust GPS more at low acceleration rates ** not needed now
-//         static float smoothedAcceleration = 0.0f;
-//         smoothedAcceleration = 0.05f * accelerationMagnitude + 0.95f * smoothedAcceleration;
-//         const float accelerationThreshold = 300.0f;
-//         const float accelRatio = constrainf(smoothedAcceleration / accelerationThreshold, 0.0f, 1.0f);
-//         float accelScale = 0.02f + 0.98f * accelRatio * accelRatio;
-//        // at default R_GPS_VEL_BASE of 1000, strongly favour GPS at low accelerations to avoid DC offsets in velocity
-//         // 0   cm/s² -> R ≈ 20
-//         //  50  cm/s² -> R ≈ 47
-//         // 100 cm/s² -> R ≈ 129
-//         // 150 cm/s² -> R ≈ 265
-//         // 200 cm/s² -> R ≈ 456
-//         //  250 cm/s² -> R ≈ 701
-//         // 300 cm/s² -> R = 1000
-//         accelScale = 1.0f;
-//         const float rVel = gpsR(R_GPS_VEL_BASE, xyDop) * noiseScale * accelScale;
-
         const float rGpsVel = gpsR(R_GPS_VEL_BASE, xyDop) * noiseScale;
         DEBUG_SET(DEBUG_POSITION_EST, 7, lrintf(rGpsPos)); // temporary debug for testing
 
@@ -815,8 +796,6 @@ void positionEstimatorUpdate(void)
 
     const float accelToLog = (debugAxis == 0) ? accelEast : accelNorth;
     DEBUG_SET(DEBUG_POSITION_EST, 5, lrintf(accelToLog));
-
-//    accelerationMagnitude = sqrtf(accelEast * accelEast + accelNorth * accelNorth);
 
     // Z-axis: always runs (for altitude hold, OSD, vario). While disarmed,
     // measure zero acceleration so covariance continues to evolve without
