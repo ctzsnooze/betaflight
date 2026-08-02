@@ -28,10 +28,12 @@ bool gpsMeasurementReadyForFusion(timeUs_t nowUs, float *noiseScale);
 
 #include "sensors/acceleration.h"
 #include "sensors/barometer.h"
+#include "sensors/gyro.h"
 #include "sensors/rangefinder.h"
 #include "sensors/sensors.h"
 
 PG_REGISTER(positionConfig_t, positionConfig, PG_POSITION, 0);
+PG_REGISTER(gyroConfig_t, gyroConfig, PG_GYRO_CONFIG, 0);
 }
 
 #include "gtest/gtest.h"
@@ -50,7 +52,13 @@ gpsSolutionData_t gpsSol;
 static uint32_t enabledSensors = 0;
 static bool rfHealthy = false;
 static float rfAltCm = 0.0f;
+static bool rfUseFakeMicrosTimestamp = true;
+static timeUs_t rfSampleTimeUs = 0;
+static timeDelta_t rfSampleIntervalUs = 10000;
 static float baroAltCm = 0.0f;
+static bool baroUseFakeMicrosTimestamp = true;
+static timeUs_t baroSampleTimeUs = 0;
+static timeDelta_t baroSampleIntervalUs = 10000;
 static timeUs_t fakeMicros = 0;
 static bool gpsAlwaysHasNewData = true;
 static bool gpsDataIsNew = false;
@@ -59,7 +67,11 @@ static float gpsDataFrequencyHz = 100.0f;
 bool sensors(uint32_t mask) { return (enabledSensors & mask) != 0; }
 bool rangefinderIsHealthy(void) { return rfHealthy; }
 int32_t rangefinderGetLatestAltitude(void) { return lrintf(rfAltCm); }
+timeUs_t rangefinderGetLatestSampleTimeUs(void) { return rfUseFakeMicrosTimestamp ? fakeMicros : rfSampleTimeUs; }
+timeDelta_t rangefinderGetSampleIntervalUs(void) { return rfSampleIntervalUs; }
 float getBaroAltitude(void) { return baroAltCm; }
+timeUs_t getBaroLatestSampleTimeUs(void) { return baroUseFakeMicrosTimestamp ? fakeMicros : baroSampleTimeUs; }
+timeDelta_t getBaroSampleIntervalUs(void) { return baroSampleIntervalUs; }
 
 timeUs_t micros(void) { return fakeMicros; }
 
@@ -111,7 +123,13 @@ protected:
         enabledSensors = SENSOR_GPS | SENSOR_BARO | SENSOR_RANGEFINDER;
         rfHealthy = true;
         rfAltCm = 100.0f;
+        rfUseFakeMicrosTimestamp = true;
+        rfSampleTimeUs = 0;
+        rfSampleIntervalUs = 10000;
         baroAltCm = 100.0f;
+        baroUseFakeMicrosTimestamp = true;
+        baroSampleTimeUs = 0;
+        baroSampleIntervalUs = 10000;
         gpsSol.llh.altCm = 100.0f;
         gpsSol.dop.pdop = 100; // pDOP 1.0
 
