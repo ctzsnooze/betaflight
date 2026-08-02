@@ -152,8 +152,8 @@ void kalmanUpdateAcceleration(positionKalman_t *kf, float measuredAccel, float R
     // Update the acceleration estimate.
     kf->x[KF_ACCELERATION] += gain * innovation;
 
-    // Add an acceleration contribution to velocity.
-    kf->x[KF_VELOCITY] += kf->x[KF_ACCELERATION] * 0.01f;
+    // Do not add a second acceleration contribution to velocity.
+    // kf->x[KF_VELOCITY] += kf->x[KF_ACCELERATION] * 0.01f;
 
     const float scale = 1.0f - gain;
 
