@@ -75,9 +75,9 @@
 #define R_ACCEL_XY        2000.0f
 #define R_GPS_VEL_BASE    2000.0f // reduced when horizontal acceleration is low and ramped during GPS packets.
 
-#define R_GPS_POS_BASE     2000.0f      // cm^2 at pDOP=1.0 // typically 10x to 100x vel r
+#define R_GPS_POS_BASE     2000.0f      // cm^2 at pDOP=1.0
+//Base GPS variance (R)  is further scaled by GPS upsampling, DOP², and packet-phase weighting.
 #define R_OPTICALFLOW_VEL   400.0f     // (cm/s)^2 at max quality
-
 
 #define Q_JERK_Z         3000.0f
 #define R_ACCEL_Z        5000.0f
@@ -383,20 +383,19 @@ STATIC_UNIT_TESTED bool gpsMeasurementReadyForFusion(timeUs_t nowUs, float *nois
         stepsSinceNewGps = 0; 
     }
 
-    int absoluteTimeoutLimit = expectedStepsPerGpsInterval * 3 / 2;
-    if (!hasNewData && (!gpsDataAvailable || stepsSinceNewGps >= absoluteTimeoutLimit)) {
-        return false; 
-    }
+const int absoluteTimeoutLimit = expectedStepsPerGpsInterval * 3 / 2;
+if (!hasNewData && (!gpsDataAvailable || stepsSinceNewGps >= absoluteTimeoutLimit)) {
+    return false;
+}
 
-    int rMultiplier = expectedStepsPerGpsInterval - stepsSinceNewGps;
-    if (rMultiplier < 1) {
-        rMultiplier = 0;
-    }
-    stepsSinceNewGps++;
-    const float noiseScaleGPS = 1.0f + (float)rMultiplier / expectedStepsPerGpsInterval; // 2->1
+int noiseScaleSteps = (2 * expectedStepsPerGpsInterval) - stepsSinceNewGps;
+if (noiseScaleSteps < expectedStepsPerGpsInterval) {
+    noiseScaleSteps = expectedStepsPerGpsInterval;
+}
+*noiseScale = (float)noiseScaleSteps / (float)expectedStepsPerGpsInterval;
+stepsSinceNewGps++;
 
-    *noiseScale = noiseScaleGPS;
-    return true;
+return true;
 }
 #endif
 
