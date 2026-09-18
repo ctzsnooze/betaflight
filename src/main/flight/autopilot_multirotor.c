@@ -1085,8 +1085,6 @@ bool positionControl(void)
     // own average (judged before the average absorbs the new sample): brake
     // physics (distance grows while speed falls) versus a flyaway (speed held).
     ap.speedXY = vector2Norm(&velocity);
-    DEBUG_SET(DEBUG_GPS_RESCUE_TRACKING, 0, lrintf(ap.speedXY));         //!< Ground Speed [unit:cm/s]
-
     ap.speedSlowing = ap.speedXY < ap.speedTrendCmS - 20.0f;
     ap.speedTrendCmS += (dt / (0.5f + dt)) * (ap.speedXY - ap.speedTrendCmS);
 
